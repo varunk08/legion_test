@@ -33,8 +33,9 @@ void per_point_task ( const Task* task,
   Domain dom = runtime->get_index_space_domain(ctx,
 					       task->regions[0].region.get_index_space());
   Rect<2> rect = dom.get_rect<2>();
-  cout<<"writing: "<<i<<" , "<<j<<"--->"<<(i*j)<<endl;
-  acc.write(DomainPoint::from_point<2>(Point<2>(input)), (i*j));
+  int index = (5 * j) + i;
+  cout<<"writing: "<<i<<" , "<<j<<"--->"<<index<<endl;
+  acc.write(DomainPoint::from_point<2>(Point<2>(input)), index);
 
 }
 void check_task ( const Task* task,
