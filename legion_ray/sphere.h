@@ -1,10 +1,10 @@
-#include "scene.h"
 #include <iostream>
 #include <string.h>
 #include <strings.h>
 #include <cmath>
-//#include <GLUT/GLUT.h>
-#include "objects.h"
+#include "scene.h"
+
+
 
 using namespace std;
 
@@ -14,7 +14,7 @@ class Sphere : public Object
 private:
     char* name;
 public:
-    
+  
     void setName(const char* newName){
         cout<<newName<<endl;
         if ( newName ) {
@@ -115,4 +115,3 @@ public:
         gluSphere(q,1,50,50);
 	}*/
 };
-

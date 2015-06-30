@@ -14,15 +14,6 @@
 
 //-------------------------------------------------------------------------------
 
-/*extern Node rootNode;
-extern Camera camera;
-extern RenderImage renderImage;
-extern MaterialList materials;
-extern LightList lights;
-extern ObjFileList objList;
-*/
-//-------------------------------------------------------------------------------
-
 #define COMPARE(a,b) (strcasecmp(a,b)==0)
 //-------------------------------------------------------------------------------
 
@@ -118,10 +109,10 @@ void PrintIndent(int level) { for ( int i=0; i<level; i++) printf("   "); }
 
 //-------------------------------------------------------------------------------
 void LoadScene(TiXmlElement *element,
-	       Node &rootNode,
-	       ObjFileList &objList,
+	       Node         &rootNode,
+	       ObjFileList  &objList,
 	       MaterialList &materials,
-	       LightList &lights,
+	       LightList    &lights,
 	       Sphere       &theSphere,
 	       BoxObject    &theBoxObject,
 	       Plane        &thePlane)
@@ -144,13 +135,13 @@ void LoadScene(TiXmlElement *element,
 
 //-------------------------------------------------------------------------------
 
-void LoadNode(Node *parent,
+void LoadNode(Node         *parent,
 	      TiXmlElement *element,
-	      ObjFileList &objList,
+	      ObjFileList  &objList,
 	      Sphere       &theSphere,
 	      BoxObject    &theBoxObject,
 	      Plane        &thePlane,
-	      int level)
+	      int          level)
 
 {
     Node *node = new Node;
@@ -173,6 +164,7 @@ void LoadNode(Node *parent,
         } else if ( COMPARE (type, "boxobject") ) {
 	  node->SetObject( &theBoxObject );
 	  printf(" - BOX OBJECT");
+	  node->SetObjTransform();
 	} else if ( COMPARE(type,"plane") ) {
             node->SetObject( &thePlane );
             printf(" - Plane");
@@ -194,8 +186,9 @@ void LoadNode(Node *parent,
 	else {
             printf(" - UNKNOWN TYPE");
         }
+
     }
-    
+
     // type
     const char* mtlName = element->Attribute("material");
     if ( mtlName ) {
@@ -208,7 +201,7 @@ void LoadNode(Node *parent,
     
     printf("\n");
     
-    
+    //Recurse through children objects    
     for ( TiXmlElement *child = element->FirstChildElement(); child!=NULL; child = child->NextSiblingElement() ) {
         if ( COMPARE( child->Value(), "object" ) ) {
 	  LoadNode(node,
@@ -221,11 +214,6 @@ void LoadNode(Node *parent,
         }
     }
     LoadTransform( node, element, level );
-
-    if(COMPARE(type,"boxobject"))      {
-      printf("---setting transform---:");
-      node->SetObjTransform();
-    }
     
 }
 

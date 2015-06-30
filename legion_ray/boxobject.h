@@ -6,8 +6,6 @@
 #include <iostream>
 #include <string.h>
 #include <cmath>
-//#include <GLUT/GLUT.h>
-#include "objects.h"
 #include "scene.h"
 #include "cyColor.h"
 #include "utils.h"

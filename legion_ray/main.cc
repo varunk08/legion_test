@@ -1,7 +1,6 @@
 /*
 Ray tracer written using Legion
-
- */
+*/
 #include <iostream>
 #include "legion.h"
 #include "xmlload.h"
@@ -70,21 +69,6 @@ bool Box::IntersectRay(const Ray &ray, float t_max) const
 }
 float GenLight::Shadow(Ray ray, float t_max)
 {
-   // cout<<"Calculating shadow"<<endl;
-   //DISABLING SHADOW CALCULATIONS -- VOLUME RENDERING
-  /*    float eps = BIAS_SHADOW;
-    ray.p = Point3(ray.p.x+eps*ray.dir.x, ray.p.y+eps*ray.dir.y,ray.p.z+eps*ray.dir.z);
-    HitInfo hitInfo;
-    
-    if(RayTrace_2(ray, hitInfo))
-    {
-        
-        if(hitInfo.z>0 && hitInfo.z < t_max){
-            
-            return 0.0; //occluded
-        }
-        
-	}*/
     return 1.0; //direct
 }
 
@@ -140,6 +124,7 @@ void top_level_task( const Task* task,
   Plane        thePlane;
   BoxObject    theBoxObject;
   const char* filename = "scene.xml";
+
   LoadScene(filename, 
 	    rootNode,
 	    camera,

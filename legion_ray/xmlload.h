@@ -2,7 +2,6 @@
 #define XMLLOAD_H
 
 #include "scene.h"
-#include "objects.h"
 #include "sphere.h"
 #include "TriObj.h"
 #include "plane.h"

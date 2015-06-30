@@ -238,9 +238,8 @@ class Object
 public:
 	virtual bool IntersectRay( const Ray &ray, HitInfo &hInfo, int hitSide=HIT_FRONT ) const=0;
 	virtual Box  GetBoundBox() const=0;
-
 	virtual void SetTransform(const Matrix3 &nodeToWorld,const Matrix3 &itm, const Point3 &pos) =0;
-	//	virtual Color RayMarch(const Ray& ray, HitInfo& hInfo) const {}
+
 };
 
 typedef ItemFileList<Object> ObjFileList;
