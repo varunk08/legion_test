@@ -80,7 +80,7 @@ bool Box::IntersectRay(const Ray &ray, float t_max) const
     // 0:(x_min,y_min,z_min), 1:(x_max,y_min,z_min)
     // 2:(x_min,y_max,z_min), 3:(x_max,y_max,z_min)
     // 4:(x_min,y_min,z_max), 5:(x_max,y_min,z_max)
-    // 6:(x_min,y_max,z_max), 7:(x_max,y_max,z_max)
+    // 6:(x_min,y_max,z_max), 7:(x_max,y_max,z_max)  }  }
     float xl = Corner(0).x;
     float xh = Corner(3).x;
     float yl = Corner(0).y;
@@ -188,18 +188,22 @@ void per_point_task ( const Task* task,
   if ( TraceSingleNode ( r, hInfo, *node)){
     hit = 1.0f;
   }
-
+  */
   FieldID fid = *(task->regions[0].privilege_fields.begin());
   const int point = task->index_point.point_data[0];
   
   RegionAccessor<AccessorType::Generic, float> acc = 
     regions[0].get_field_accessor(fid).typeify<float>();
- 
+
   Domain dom = runtime->get_index_space_domain(ctx,
 					       task->regions[0].region.get_index_space());
-  Rect<2> rect = dom.get_rect<2>();
-  acc.write(DomainPoint::from_point<2>(Point<2>(sd.coords)), hit);
-  */
+  Rect<1> rect = dom.get_rect<1>();
+  for(GenericPointInRectIterator<1> pir(rect); pir; pir++)
+    {
+      acc.write(DomainPoint::from_point<1>(pir.p), 0.5f);
+    }
+
+
   /*//TEST */
     int* input = ((int*)task->local_args);
     cout<<"Test: "<<input[0]<<" "<<input[1]<<endl;
@@ -231,96 +235,95 @@ void top_level_task( const Task* task,
 	    theBoxObject,  thePlane );
 
   //init render object
-  RenderObject render_object;
+  /*  RenderObject render_object;
   Node* child_node = rootNode.GetChild(0);
   render_object.SetObject( *((Sphere *)child_node->GetObject()) ); //get the first child
   render_object.SetMaterial( child_node->GetMaterial() );
   //render_object.SetLightList(lights);
   render_object.SetTransformation(child_node->GetTransform());
+  */
 
   //create rect of screen dimensions
-  int xdim = 64;
-  int ydim = 64;
-  int lo[2] = {0,0}; 
-  int hi[2] = {xdim -1, ydim -1};
-  Point<2> low(lo);  Point<2> high(hi);
-  Rect<2> elem_rect(low,high); 
+  int xdim = 800;
+  int ydim = 600;
+  int size = xdim * ydim;
+  //  int lo[2] = {0,0}; 
+  //  int hi[2] = {xdim -1, ydim -1};
+  //  Point<2> low(lo);  Point<2> high(hi);
+  //  Rect<2> elem_rect(low,high); 
+  Rect<1> elem_rect(Point<1>(0), Point<1>(size -1));
 
   //create index space
-  IndexSpace is = runtime->create_index_space(ctx, Domain::from_rect<2>(elem_rect));
-  runtime->attach_name(is, "is");
+  IndexSpace is = runtime->create_index_space(ctx, Domain::from_rect<1>(elem_rect));
 
   //create input field space
   FieldSpace input_fs = runtime->create_field_space(ctx);
-  runtime->attach_name(input_fs, "input_fs");
-
-  //field space allocator
-  FieldAllocator allocator = runtime->create_field_allocator(ctx, input_fs);
-  allocator.allocate_field(sizeof(float), FID_IN);
-  runtime->attach_name(input_fs, FID_IN, "in");
-
+  {
+    //field space allocator
+    FieldAllocator allocator = runtime->create_field_allocator(ctx, input_fs);
+    allocator.allocate_field(sizeof(float), FID_IN);
+  }
   //create output field space
   FieldSpace output_fs = runtime->create_field_space(ctx);
-  runtime->attach_name( output_fs, "out");
-
-  //field allocator for output field
-  allocator = runtime->create_field_allocator(ctx, output_fs);
-  allocator.allocate_field(sizeof(float), FID_OUT);
-  runtime->attach_name(output_fs, FID_OUT, "out");
+  {
+    //field allocator for output field
+    FieldAllocator allocator = runtime->create_field_allocator(ctx, output_fs);
+    allocator.allocate_field(sizeof(float), FID_OUT);
+  }
 
   //create logical regions for input and output
   LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
-  runtime->attach_name( input_lr, "input_lr");
 
   //output logical region
   LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
-  runtime->attach_name( output_lr, "output_lr");
 
   //Launch domain - our 2D grid
-  Domain launch_domain = Domain::from_rect<2>(elem_rect);
+  Domain launch_domain = Domain::from_rect<1>(elem_rect);
+
+
+  //Create Logical Partitions
+  int num_regions = 48;
+  Rect<1> color_bounds(Point<1>(0), Point<1>(num_regions - 1));
+  Domain color_domain = Domain::from_rect<1>(color_bounds);
+  IndexPartition ip;
+  Blockify<1> coloring ( size / num_regions );
+  ip = runtime->create_index_partition(ctx, is, coloring);
+  LogicalPartition output_lp = runtime->get_logical_partition(ctx, output_lr, ip);
+
 
   //arguments for each point in the 2D grid
   ArgumentMap arg_map;
 
-  for(int y = 0; y < ydim; ++y) {
-    for(int x=0; x < xdim; ++x) {
-      int pt[2] = {x, y};
-      Ray prim_ray;
-      GenerateRay(x, y, camera, prim_ray);
-      SceneData scene_data;
-      scene_data.ray = prim_ray;
-      //scene_data.rootNode = rootNode;
-      //scene_data.output_lr = output_lr;
-      scene_data.coords[0] = x;      scene_data.coords[1] = y;
-      //arg_map.set_point( DomainPoint::from_point<2>(Point<2>(pt)), TaskArgument (&scene_data, sizeof(SceneData)));
-      arg_map.set_point( DomainPoint::from_point<2>(Point<2>(pt)), TaskArgument (&pt, 2 * sizeof(int)));
-    }
+  for(int i=0; i < size; ++i) {
+    int x = i % xdim;
+    int y = i / xdim;
+    int pt[2] = { x, y };
+    //    Ray prim_ray;
+    //    GenerateRay(x, y, camera, prim_ray);
+    //    SceneData scene_data;
+    //    scene_data.ray = prim_ray;
+    //    scene_data.rootNode = rootNode;
+    //    scene_data.output_lr = output_lr;
+    //    scene_data.coords[0] = x;      scene_data.coords[1] = y;
+    //arg_map.set_point( DomainPoint::from_point<2>(Point<2>(pt)), TaskArgument (&scene_data, sizeof(SceneData)));
+    arg_map.set_point( DomainPoint::from_point<1>(Point<1>(i)), TaskArgument (&pt, 2 * sizeof(int)));
   }
 
+  cout<<"Launching tasks"<<endl;
   //Index launcher - for init values into logical region
   IndexLauncher index_launcher ( PER_POINT_TASK_ID, 
-				 launch_domain, 
+				 color_domain, 
 				 TaskArgument(NULL,0), 
 				 arg_map );
-
-  index_launcher.add_region_requirement( RegionRequirement( output_lr, 
+  //this example works without region requirements
+  index_launcher.add_region_requirement( RegionRequirement( output_lp, 0,
 							    WRITE_DISCARD,
 							    EXCLUSIVE,
 							    output_lr));
   index_launcher.region_requirements[0].add_field(FID_OUT);
   runtime->execute_index_space(ctx, index_launcher);
-  /*					
-  HighLevel::FutureMap fm = runtime->execute_index_space(ctx, index_launcher);
-  fm.wait_all_results();
-  for(int i = 0; i < xdim; ++i) {
-    for(int j =0; j< ydim; ++j) {
-      int pt[2];  pt[0] =i; pt[1] = j;
-      int received = fm.get_result<int>( HighLevel::DomainPoint::from_point<2>(Point<2>(pt)));
-      cout<<"("<<i<<","<<j<<"): "<<received<<" ";
-    }
-    cout<<"\n";
-    }*/
-  /*  float zbuffer[xdim * ydim];
+
+  float zbuffer[xdim * ydim];
   RenderImage r_image;
   r_image.Init( xdim, ydim);
 
@@ -331,15 +334,16 @@ void top_level_task( const Task* task,
   RegionAccessor<AccessorType::Generic, float> acc = output_pr.get_field_accessor(FID_OUT).typeify<float>();
   int index = 0;
 
-  for (GenericPointInRectIterator<2> pir (elem_rect); pir; pir++) {
-    float val = acc.read(DomainPoint::from_point<2>(pir.p));
+  for (GenericPointInRectIterator<1> pir (elem_rect); pir; pir++) {
+    float val = acc.read(DomainPoint::from_point<1>(pir.p));
     zbuffer[index] = val;
-    Color24 col;  col.r = val; col.g = val; col.b = val;
+    Color24 col;  col.r = val*150; col.g = val * 150; col.b = 0.0f;
     r_image.PutPixel(index,col, val);
     index++;
-    cout<<"val: "<<val<<endl;
   }
-  r_image.SaveImage("renderimage.ppm");*/
+  r_image.SaveImage("renderimage.ppm");
+
+
   //Task Launcher for check tasks
   /*  TaskLauncher check_launcher( CHECK_TASK_ID, TaskArgument(NULL,0));
   check_launcher.add_region_requirement( RegionRequirement(input_lr,
@@ -348,8 +352,7 @@ void top_level_task( const Task* task,
 							    input_lr));
   check_launcher.region_requirements[0].add_field ( FID_IN );
   runtime->execute_task(ctx, check_launcher);
-  */
-  
+  */  
   //Destroy all - index spaces, field spaces, logical regions
   runtime->destroy_logical_region( ctx, input_lr );
   runtime->destroy_logical_region( ctx, output_lr);
