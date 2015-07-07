@@ -359,7 +359,7 @@ public:
 	}
     
 };
-
+//------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------
 
 class Camera
@@ -416,7 +416,14 @@ public:
 	bool	IsRenderDone() const			{ return numRenderedPixels >= width*height; }
 
 	//! custom implementation in scene.cpp
-	void PutPixel(int index, Color24 color,float zbuf);
+	//	void PutPixel(int index, Color24 color,float zbuf);
+	void PutPixel(int index, Color24 color,float zbuf)
+	{
+	  img[index]=color;
+	  zbuffer[index] = zbuf;
+	  IncrementNumRenderPixel(1);
+	}
+ 
 
       
 	void	ComputeZBufferImage()
@@ -483,6 +490,7 @@ private:
 		return true;
 	}
 };
+
 
 //-------------------------------------------------------------------------------
 #endif

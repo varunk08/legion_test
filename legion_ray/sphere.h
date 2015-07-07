@@ -1,3 +1,5 @@
+#ifndef _SPHERE
+#define _SPHERE
 #include <iostream>
 #include <string.h>
 #include <strings.h>
@@ -115,3 +117,5 @@ public:
         gluSphere(q,1,50,50);
 	}*/
 };
+
+#endif

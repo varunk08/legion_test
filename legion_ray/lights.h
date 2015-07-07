@@ -28,7 +28,7 @@ protected:
         glLightfv( GL_LIGHT0 + lightID, GL_POSITION, &pos.x );
         
 	};*/
-  static float Shadow(Ray ray, float t_max=BIGFLOAT);
+  float Shadow(Ray ray, float t_max=BIGFLOAT) const { return 1.0; }
 };
 
 //-------------------------------------------------------------------------------

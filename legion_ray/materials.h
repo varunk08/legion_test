@@ -31,12 +31,21 @@ class MtlBlinn : public Material
   void SetAbsorption(cyColor absorp ) { absorption = absorp; }
   void SetRefractionIndex(float _ior) { ior = _ior; }
 
+  cyColor GetDiffuse() {return  diffuse;}
+  cyColor GetSpecular() {return  specular; }
+  float GetGlossiness() {return  glossiness; }
+  cyColor GetReflection() {return  reflection; }
+  cyColor GetRefraction() {return  refraction; }
+  cyColor GetAbsorption() {return  absorption; }
+  float GetRefractionIndex() {return  ior; }
+
   //Main shade function to be filled in later
   cyColor Shade(const Ray &ray, const HitInfo &hInfo, const LightList &lights, int bounceCount) const
     {
       return cyColor(1,1,1);
     }    
   ~MtlBlinn(){};
+
     
  private:
   cyColor diffuse, specular, reflection, refraction;

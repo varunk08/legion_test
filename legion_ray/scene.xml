@@ -3,11 +3,11 @@
       <!-- Objects-->
 
       <object type="sphere" name="sphere2" material="mtl2">
-            <scale value="4"/>
+            <scale value="2"/>
             <rotate angle="30" y="1"/>
-            <translate x="-8" y="0" z="-40"/>
+            <translate x="0" y="0" z="-10"/>
         </object>
-        <object type="sphere" name="sphere3" material="mtl2">
+<!--        <object type="sphere" name="sphere3" material="mtl2">
             <scale value="1"/>
             <rotate angle="30" y="1"/>
             <translate x="9" y="0" z="-40"/>
@@ -45,7 +45,7 @@
           <translate x="15"/>
         </object>
       </object>
-
+-->
         <!-- Lights -->
         <light type="ambient" name="ambientLight">
             <intensity value="0.4"/>
@@ -89,7 +89,7 @@
         <target x="0" y="0" z="-1"/>
         <up x="0" y="1" z="0"/>
         <fov value="30"/>
-        <width value="800"/>
-        <height value="600"/>
+        <width value="400"/>
+        <height value="400"/>
     </camera>
 </xml>
