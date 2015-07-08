@@ -33,6 +33,11 @@ struct SceneData
   int index;
 };
 
+struct RGBColor
+{
+  float r; float g; float b;
+};
+
 void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim)
 {
   float alpha = camera.fov;
@@ -153,20 +158,17 @@ void per_point_task ( const Task* task,
 {
 
 
-  /*
-1. init node
-2. init materials 
-3. init transformations
-4. perform ray tracing
-5. write to logical region
-*/
-
-  //SceneData sd  = *((SceneData*)task->local_args);
   Ray* rays = (Ray*)task->local_args;
   //initialize node, object, transforms for each task
-  Node* node = new Node;
-  node->SetName("only_node");
+  Node *node = new Node;
   Sphere sphereObj;
+  PointLight *light = new PointLight();
+  LightList lightList;
+
+  light->SetIntensity(0.7);
+  light->SetPosition(Point3(0,6,0));
+  lightList.push_back(light);
+  node->SetName("only_node");
   node->SetObject(&sphereObj);
   node->Scale(2,2,2);
   node->Translate (Point3(0,0,-20));
@@ -174,9 +176,9 @@ void per_point_task ( const Task* task,
   FieldID fid = *(task->regions[0].privilege_fields.begin());
   const int point = task->index_point.point_data[0];
   
-  RegionAccessor<AccessorType::Generic, float> acc = 
-    regions[0].get_field_accessor(fid).typeify<float>();
-
+  RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
+  RGBColor col;
+  col.r = 10.0f; col.g =50.0f; col.b=0.0f;
   Domain dom = runtime->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
   Rect<1> rect = dom.get_rect<1>();
   int index = 0;
@@ -187,9 +189,12 @@ void per_point_task ( const Task* task,
       hInfo.Init();
       float hit = 0.0f;
       if ( TraceSingleNode ( r, hInfo, *node)){
+
 	hit = 10.0f;
+	col.r = 100.0f;	col.g = 100.0f;	col.b = 100.0f;
       }
-      acc.write(DomainPoint::from_point<1>(pir.p), hit);
+      acc.write(DomainPoint::from_point<1>(pir.p), (RGBColor)col);
+      col.r = 10.0f; col.g =50.0f; col.b=0.0f;
       index++;
     }
 
@@ -254,7 +259,7 @@ void top_level_task( const Task* task,
   {
     //field allocator for output field
     FieldAllocator allocator = runtime->create_field_allocator(ctx, output_fs);
-    allocator.allocate_field(sizeof(float), FID_OUT);
+    allocator.allocate_field(sizeof(RGBColor), FID_OUT);
   }
 
   //create logical regions for input and output
@@ -269,7 +274,7 @@ void top_level_task( const Task* task,
 
   //Create Logical Partitions
   //!Make sure size is as multiple of 4!!
-  int num_regions = 4;
+  int num_regions = 60;
   Rect<1> color_bounds(Point<1>(0), Point<1>(num_regions - 1));
   Domain color_domain = Domain::from_rect<1>(color_bounds);
   IndexPartition ip;
@@ -296,21 +301,6 @@ void top_level_task( const Task* task,
     arg_map.set_point(DomainPoint::from_point<1>(Point<1>(i)),
 		      TaskArgument(&rays[i * num_per_block], num_per_block * sizeof(Ray)));
   }
-  /*  for(int i=0; i < size; ++i) {
-    int x = i % xdim;
-    int y = i / xdim;
-    int pt[2] = { x, y };
-    Ray prim_ray;
-    GenerateRay(x, y, camera, prim_ray, xdim, ydim);
-    SceneData scene_data;
-    scene_data.ray = prim_ray;
-    scene_data.index = i;
-    //scene_data.rootNode = rootNode;
-    //scene_data.output_lr = output_lr;
-    scene_data.coords[0] = x;      scene_data.coords[1] = y;
-    arg_map.set_point( DomainPoint::from_point<1>(Point<1>(i)), TaskArgument (&scene_data, sizeof(SceneData)));
-    // arg_map.set_point( DomainPoint::from_point<1>(Point<1>(i)), TaskArgument (&pt, 2 * sizeof(int)));
-    }*/
 
   launch_domain = color_domain;
   cout<<"Launching tasks"<<endl;
@@ -338,15 +328,16 @@ void top_level_task( const Task* task,
   InlineLauncher output_launcher (RegionRequirement (output_lr, READ_ONLY, EXCLUSIVE, output_lr));
   output_launcher.requirement.add_field(FID_OUT);
   PhysicalRegion output_pr = runtime->map_region(ctx, output_launcher);
-
-  RegionAccessor<AccessorType::Generic, float> acc = output_pr.get_field_accessor(FID_OUT).typeify<float>();
+  output_pr.wait_until_valid();
+  RegionAccessor<AccessorType::Generic, RGBColor> acc = output_pr.get_field_accessor(FID_OUT).typeify<RGBColor>();
   int index = 0;
 
   for (GenericPointInRectIterator<1> pir (elem_rect); pir; pir++) {
-    float val = acc.read(DomainPoint::from_point<1>(pir.p));
-    zbuffer[index] = val;
-    Color24 col;  col.r = val*50; col.g = 0.0f; col.b = 0.0f;
-    r_image.PutPixel(index,col, val);
+    RGBColor val = (RGBColor)acc.read(DomainPoint::from_point<1>(pir.p));
+    zbuffer[index] = val.r;
+    Color24 col;
+    col.r = val.r; col.g = val.g; col. b = val.b;
+    r_image.PutPixel(index,col, val.r);
     index++;
   }
   r_image.SaveImage("renderimage.ppm");
