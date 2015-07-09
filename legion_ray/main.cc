@@ -7,7 +7,7 @@ Ray tracer written using Legion
 #include "legion.h"
 #include "xmlload.h"
 #include "scene.h"
-#include "render_object.h"
+
 #define _USE_MATH_DEFINES;
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
@@ -164,21 +164,27 @@ void per_point_task ( const Task* task,
   Sphere sphereObj;
   PointLight *light = new PointLight();
   LightList lightList;
-
+  MtlBlinn *mtlBlinn =  new MtlBlinn();
+  //material init
+  mtlBlinn->SetDiffuse(cyColor(1.0,0.5,0.5));
+  mtlBlinn->SetSpecular(cyColor(0.7,0.7,0.7));
+  //light init
   light->SetIntensity(0.7);
-  light->SetPosition(Point3(0,6,0));
+  light->SetPosition(Point3(0,10,0));
   lightList.push_back(light);
+  //node init
   node->SetName("only_node");
   node->SetObject(&sphereObj);
-  node->Scale(2,2,2);
+  node->Scale(3,3,3);
   node->Translate (Point3(0,0,-20));
+  node->SetMaterial(mtlBlinn);
 
   FieldID fid = *(task->regions[0].privilege_fields.begin());
   const int point = task->index_point.point_data[0];
   
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
   RGBColor col;
-  col.r = 10.0f; col.g =50.0f; col.b=0.0f;
+  col.r = 10.0f; col.g =10.0f; col.b=10.0f;
   Domain dom = runtime->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
   Rect<1> rect = dom.get_rect<1>();
   int index = 0;
@@ -187,22 +193,21 @@ void per_point_task ( const Task* task,
       Ray r = rays[index];
       HitInfo hInfo;
       hInfo.Init();
-      float hit = 0.0f;
+
+      //test for intersections
       if ( TraceSingleNode ( r, hInfo, *node)){
 
-	hit = 10.0f;
-	col.r = 100.0f;	col.g = 100.0f;	col.b = 100.0f;
+	//shade - fix magic number
+	cyColor shade = hInfo.node->GetMaterial()->Shade(r, hInfo, lightList, 0);
+	col.r = 200* shade.r;
+	col.g = 200* shade.g;
+	col.b = 200* shade.b;
       }
+      //write data to logical region
       acc.write(DomainPoint::from_point<1>(pir.p), (RGBColor)col);
-      col.r = 10.0f; col.g =50.0f; col.b=0.0f;
-      index++;
+      col.r = 10.0f; col.g =10.0f; col.b=10.0f;
+      ++index;
     }
-
-
-  /*//TEST 
-    int* input = ((int*)task->local_args);
-    cout<<"Test: "<<input[0]<<" "<<input[1]<<endl;
-  */
 
 }
 
@@ -302,9 +307,10 @@ void top_level_task( const Task* task,
 		      TaskArgument(&rays[i * num_per_block], num_per_block * sizeof(Ray)));
   }
 
-  launch_domain = color_domain;
   cout<<"Launching tasks"<<endl;
+
   //Index launcher - for init values into logical region
+  launch_domain = color_domain;
   IndexLauncher index_launcher ( PER_POINT_TASK_ID, 
 				 launch_domain, 
 				 TaskArgument(NULL,0), 
@@ -314,17 +320,15 @@ void top_level_task( const Task* task,
 							    WRITE_DISCARD,
 							    EXCLUSIVE,
 							    output_lr)); 
-  /*  index_launcher.add_region_requirement( RegionRequirement( output_lr,
-							    WRITE_DISCARD,
-							    EXCLUSIVE,
-							    output_lr)); */
+
   index_launcher.region_requirements[0].add_field(FID_OUT);
   runtime->execute_index_space(ctx, index_launcher);
 
-  float zbuffer[xdim * ydim];
+  //output buffer
   RenderImage r_image;
   r_image.Init( xdim, ydim);
 
+  //Launcher for reading physical region
   InlineLauncher output_launcher (RegionRequirement (output_lr, READ_ONLY, EXCLUSIVE, output_lr));
   output_launcher.requirement.add_field(FID_OUT);
   PhysicalRegion output_pr = runtime->map_region(ctx, output_launcher);
@@ -332,12 +336,14 @@ void top_level_task( const Task* task,
   RegionAccessor<AccessorType::Generic, RGBColor> acc = output_pr.get_field_accessor(FID_OUT).typeify<RGBColor>();
   int index = 0;
 
+  //read from logical region and write to buffer renderimage
   for (GenericPointInRectIterator<1> pir (elem_rect); pir; pir++) {
     RGBColor val = (RGBColor)acc.read(DomainPoint::from_point<1>(pir.p));
-    zbuffer[index] = val.r;
     Color24 col;
-    col.r = val.r; col.g = val.g; col. b = val.b;
-    r_image.PutPixel(index,col, val.r);
+    col.r  = val.r;
+    col.g  = val.g;
+    col. b = val.b;
+    r_image.PutPixel(index, col, val.r);
     index++;
   }
   r_image.SaveImage("renderimage.ppm");
