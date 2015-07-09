@@ -4,25 +4,30 @@ Ray tracer written using Legion
 #include <math.h>
 #include <cmath>
 #include <iostream>
-#include "legion.h"
 #include "xmlload.h"
+#incldue "volumedata.h"
 #include "scene.h"
+#include "boxobject.h"
+#include "legion.h"
 
+//-----------------------------------------------------------------------------------------------------
 #define _USE_MATH_DEFINES;
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
 using namespace std;
 
+//-----------------------------------------------------------------------------------------------------
 enum TaskID{
   TOP_LEVEL_ID,
-  PER_POINT_TASK_ID,
+  PER_PIXEL_TASK_ID,
   CHECK_TASK_ID,
+  VOLUME_RENDER_TASK_ID,
 };
 enum FieldSpaceID{
-  RAY_X,
-  RAY_Y,
-  RAY_Z,
   FID_OUT,
+  FID_VOL_DATA,
+  FID_CORNER_POS,
+  FID_GRADIENTS,
 };
 
 //Info needed by each task to perform rendering calculations
@@ -37,122 +42,27 @@ struct RGBColor
 {
   float r; float g; float b;
 };
+typedef RGBColor Point3f;
 
-void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim)
-{
-  float alpha = camera.fov;
-  float l = 1.0f;
-  float h = l * tan (alpha / 2.0 * (M_PI/180));
-  float aspectRatio = (float) xdim / ydim;
-  float w = aspectRatio * abs(h);
-  float dx = (2 * abs(w)) / xdim;
-  float dy = -(2 * abs(h)) / ydim;
-  float dxx = dx/2, dyy = dy/2;
-  Point3 K(-w, h, -l);
+//-----------------------------------------------------------------------------------------------------
+//Function signatures
+void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim);
+LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
+			       unsigned char *volume_data, 
+			       Context ctx, HighLevelRuntime *runtime);
+bool init_volume_data ( unsigned char *volume_data, cyColor* color_tf, float* alpha_tf,
+			unsigned char &minData, unsigned char &maxData, int &tf_size,
+			int data_xdim, int data_ydim, int data_zdim,
+			const char* data_file, const char* tf_file);
 
-
-  K.x += x * dx;
-  K.y += y * dy;
-  K.x += dxx;
-  K.y += dyy;
-
-  Matrix3 RotMat;
-  cyPoint3f f = camera.dir;
-  f. Normalize();
-
-  cyPoint3f s = f.Cross(camera.up);
-  s. Normalize();
-
-  cyPoint3f u = s.Cross(f);
-  u.Normalize();
-  const float pts[9] = {s.x, u.x, -f.x,
-			s.y, u.y, -f.y,
-			s.z, u.z, -f.z  };
-  RotMat.Set(pts);
-  Point3 cam_pos(camera.pos);
-  r.p = cam_pos;
-  r.dir =  K * RotMat;
-
-  r.dir.Normalize();
+bool Box::IntersectRay(const Ray &ray, float t_max);
+bool TraceSingleNode(const Ray &r, HitInfo &hInfo, const Node &node);
+//-----------------------------------------------------------------------------------------------------
 
 
-
-}
-bool Box::IntersectRay(const Ray &ray, float t_max) const
-{
-    Ray r = ray;
-    float tmin  =  -t_max;
-    float tmax = t_max;
-    //if ray is inside box - return true
-    if (IsInside(r.p)) return true;
-    //get pairs of planes - x , y, z
-    // 0:(x_min,y_min,z_min), 1:(x_max,y_min,z_min)
-    // 2:(x_min,y_max,z_min), 3:(x_max,y_max,z_min)
-    // 4:(x_min,y_min,z_max), 5:(x_max,y_min,z_max)
-    // 6:(x_min,y_max,z_max), 7:(x_max,y_max,z_max)  }  }
-    float xl = Corner(0).x;
-    float xh = Corner(3).x;
-    float yl = Corner(0).y;
-    float yh = Corner(2).y;
-    float zl = Corner(0).z;
-    float zh = Corner(5).z;
-    
-    //Check intersection for X planes
-    if(r.p.x != 0.0){
-        float tx1 = (xl - ray.p.x)/ ray.dir.x;
-        float tx2 = (xh - ray.p.x)/ ray.dir.x;
-        
-        tmin = utils::max((float)tmin,(float) utils::min((float)tx1,tx2));
-        tmax = utils::min((float)tmax,(float) utils::max((float)tx1, tx2));
-    }
-    //Check intersection for Y planes
-    if(r.p.y != 0.0){
-        float tx1 = (yl - ray.p.y)/ ray.dir.y;
-        float tx2 = (yh - ray.p.y)/ ray.dir.y;
-        
-        tmin = max(tmin, min(tx1,tx2));
-        tmax = min(tmax, max(tx1, tx2));
-    }
-    
-    //Check intersection for Z planes
-    if(r.p.z != 0.0){
-        float tx1 = (zl - ray.p.z)/ ray.dir.z;
-        float tx2 = (zh - ray.p.z)/ ray.dir.z;
-        
-        tmin = max(tmin, min(tx1,tx2));
-        tmax = min(tmax, max(tx1, tx2));
-    }
-    
-    return tmax>=tmin;
-    
-}
-
-bool TraceSingleNode(const Ray &r, HitInfo &hInfo, const Node &node)
-{
-
-
-    Ray ray = r;
-    ray = node.ToNodeCoords(r);
-
-    const Object* obj = node.GetObject();
-    bool objHitTest = false;
-
-    
-    if(obj)    {
-        if(obj->IntersectRay(ray, hInfo)){
-            objHitTest=true;
-            hInfo.node = &node;
-        }
-    }
-    
-    if(objHitTest){
-       node.FromNodeCoords(hInfo);
-    }
-    return objHitTest;
-}
-
+//Tasks
 //Sub-tasks launched from top level task
-void per_point_task ( const Task* task,
+void per_pixel_task ( const Task* task,
 		     const std::vector<PhysicalRegion> &regions,
 		     Context ctx, HighLevelRuntime *runtime)
 {
@@ -210,7 +120,21 @@ void per_point_task ( const Task* task,
     }
 
 }
+//-----------------------------------------------------------------------------------------------------
 
+//Volume render sub task called from per_pixel_task
+/*
+task arguments: shading parameters
+logical regions: volume data
+returns color as future
+*/
+void volume_render_task ( const Task* task,
+			  const std::vector<PhysicalRegion> &regions,
+			  Context ctx, HighLevelRuntime *runtime)
+{
+}
+
+//-----------------------------------------------------------------------------------------------------
 //Main task
 void top_level_task( const Task* task,
 		     const std::vector<PhysicalRegion> &regions,
@@ -228,21 +152,33 @@ void top_level_task( const Task* task,
   Sphere       theSphere;
   Plane        thePlane;
   BoxObject    theBoxObject;
+
   const char* filename = "scene.xml";
 
   LoadScene(filename, rootNode, camera, renderImage,
 	    materials, lights,  objList, theSphere,
 	    theBoxObject,  thePlane );
 
-  //init render object
-  /*  RenderObject render_object;
-  Node* child_node = rootNode.GetChild(0);
-  render_object.SetObject( *((Sphere *)child_node->GetObject()) ); //get the first child
-  render_object.SetMaterial( child_node->GetMaterial() );
-  //render_object.SetLightList(lights);
-  render_object.SetTransformation(child_node->GetTransform());
-  */
+  const char* data_file = "foot_8bit_256x256x256.raw";
+  const char* tf_file = "foot_2.1dt";
+  int data_xdim = 256; int data_ydim = 256; int data_zdim = 256;
 
+  //Have to deallocate uc_vol_data, color_tf, alpha_tf later
+  unsigned char* uc_vol_data = NULL;
+  cyColor* color_tf = NULL;
+  float* alpha_tf = NULL;
+  unsigned char minData; 
+  unsigned char maxData;
+  int tf_size;
+  if( !init_volume_data (uc_vol_data, color_tf, alpha_tf,
+			 minData, maxData, tf_size,
+			 data_xdim, data_ydim, data_zdim,
+			 data_file, tf_file )){
+    cout<<" Fatal error"<<endl;
+    return;
+  }
+  LogicalRegion volume_lr = load_volume_data(data_xdim, data_ydim, data_zdim,
+					     uc_vol_data, ctx, runtime);
   //create rect of screen dimensions
   int xdim = 800;
   int ydim = 600;
@@ -252,13 +188,6 @@ void top_level_task( const Task* task,
   //create index space
   IndexSpace is = runtime->create_index_space(ctx, Domain::from_rect<1>(elem_rect));
 
-  //create input field space
-  FieldSpace input_fs = runtime->create_field_space(ctx);
-  {
-    //field space allocator
-    FieldAllocator allocator = runtime->create_field_allocator(ctx, input_fs);
-    allocator.allocate_field(sizeof(float), RAY_X);
-  }
   //create output field space
   FieldSpace output_fs = runtime->create_field_space(ctx);
   {
@@ -266,9 +195,6 @@ void top_level_task( const Task* task,
     FieldAllocator allocator = runtime->create_field_allocator(ctx, output_fs);
     allocator.allocate_field(sizeof(RGBColor), FID_OUT);
   }
-
-  //create logical regions for input and output
-  LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
 
   //output logical region
   LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
@@ -278,8 +204,8 @@ void top_level_task( const Task* task,
 
 
   //Create Logical Partitions
-  //!Make sure size is as multiple of 4!!
-  int num_regions = 60;
+  //!Make sure size is as multiple of num_regions!!
+  int num_regions = 4;
   Rect<1> color_bounds(Point<1>(0), Point<1>(num_regions - 1));
   Domain color_domain = Domain::from_rect<1>(color_bounds);
   IndexPartition ip;
@@ -311,7 +237,7 @@ void top_level_task( const Task* task,
 
   //Index launcher - for init values into logical region
   launch_domain = color_domain;
-  IndexLauncher index_launcher ( PER_POINT_TASK_ID, 
+  IndexLauncher index_launcher ( PER_PIXEL_TASK_ID, 
 				 launch_domain, 
 				 TaskArgument(NULL,0), 
 				 arg_map );
@@ -349,27 +275,230 @@ void top_level_task( const Task* task,
   r_image.SaveImage("renderimage.ppm");
 
   //Destroy all - index spaces, field spaces, logical regions
-  runtime->destroy_logical_region( ctx, input_lr );
   runtime->destroy_logical_region( ctx, output_lr);
-  runtime->destroy_field_space( ctx, input_fs);
   runtime->destroy_field_space( ctx, output_fs);
   runtime->destroy_index_space( ctx, is);
 }
-
+//-----------------------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
   HighLevelRuntime::set_top_level_task_id( TOP_LEVEL_ID);
 
   HighLevelRuntime::register_legion_task<top_level_task>(TOP_LEVEL_ID,
-								    Processor::LOC_PROC,
-								    true,
-								    false );
-  HighLevelRuntime::register_legion_task<per_point_task>(PER_POINT_TASK_ID,
-									 Processor::LOC_PROC,
-									 true,
-									 false);
-
+							 Processor::LOC_PROC,
+							 true,
+							 false );
+  HighLevelRuntime::register_legion_task<per_pixel_task>(PER_PIXEL_TASK_ID,
+							 Processor::LOC_PROC,
+							 true,
+							 false);
+  HighLevelRuntime::register_legion_task<volume_render_task>(VOLUME_RENDER_TASK_ID,
+							     Processor::LOC_PROC,
+							     true,
+							     false);
 
   return HighLevelRuntime::start(argc, argv);
 
+}
+//-----------------------------------------------------------------------------------------------------
+bool init_volume_data ( unsigned char *volData, cyColor* color_tf, float* alpha_tf,
+			unsigned char &minData, unsigned char &maxData, int &tf_size,
+			int data_xdim, int data_ydim, int data_zdim,
+			const char* data_file, const char* tf_file)
+{
+
+  VolumeVis::VolumeData DataLoader;
+
+  if( DataLoader.Load(data_file, data_xdim, data_ydim, data_zdim, &volData) 
+      && DataLoader.LoadTF(tf_file) ) {
+    std::cout<<"Loaded data file: "<<data_file<<std::endl;
+    //theBoxObject.SetDimensions(xdim, ydim, zdim); 
+    //theBoxObject.SetData(volumeData, lights);
+    //theBoxObject.CalculateGradients();
+    DataLoader.GetTransferFunction( &color_tf, &alpha_tf, tf_size, minData, maxData );
+    //theBoxObject.SetTransferFunction(color_tf, alpha_tf, tf_size, minData, maxData);
+
+  }
+  else {
+    cout<<"Failed loading volume data file"<<endl;
+    return false;
+  }
+  return true;
+}
+
+LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
+			       unsigned char *volumeData, 
+			       Context ctx, HighLevelRuntime *runtime)
+{
+
+  /*
+1 logical region
+1 index space - xdim*ydim*zdim 
+3 fields xdim*ydim*zdim size - corner pos (3 floats), data_points (1 uchar), gradients (3 floats)
+
+2 logical region?
+transfer function
+*/
+
+    cout<<"Creating Logical regions for volume data"<<endl;
+    int num_points = data_xdim * data_ydim * data_zdim;
+
+    //Index space
+    IndexSpace volume_data_is = runtime->create_index_space( ctx, num_points);
+
+    //Field space
+    FieldSpace volume_data_fs = runtime->create_field_space(ctx);
+    FieldAllocator falloc = runtime->create_field_allocator(ctx, data_fs);
+    falloc.allocate_field(sizeof(unsigned char), FID_VOL_DATA);
+    falloc.allocate_field(sizeof(Point3f), FID_CORNER_POS);
+    falloc.allocate_field(sizeof(Point3f), FID_GRADIENTS);
+
+    //Make logical region
+    LogicalRegion volume_data_lr = runtime->create_logical_region(ctx, volume_data_is, volume_data_fs);
+    runtime->attach_name(volume_data_lr, "volume_data_lr");
+
+    //Create Region requirement
+    RegionRequirement vol_req (volume_data_lr, READ_WRITE, EXCLUSIVE, volume_data_lr);
+    vol_req.add_field(FID_VOL_DATA);
+    vol_req.add_field(FID_CORNER_POS);
+    vol_req.add_field(FID_GRADIENTS);
+
+    //Create Physical regions
+    PhysicalRegion vol_data_pr = runtime->map_region(ctx, vol_req);
+
+    //Create Region accessors
+    vol_data_ps.wait_until_valid();
+    RegionAccessor <AccessorType::Generic, unsigned char> fa_vol_data = vol_data_pr.get_field_accessor(FID_VOL_DATA).typeify<unsigned char>();
+    RegionAccessor<AccessorType::Generic, Point3f> fa_corner_pos = vol_data_pr.get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
+    RegionAccessor<AccessorType::Generic, Point3f> fa_gradients = vol_data_pr.get_field_accessor(FID_GRADIENTS).typeify<Point3f>();
+
+    //Allocate index space - I think this step is needed due to this being an unstructured index space?
+    IndexAllocator ialloc = runtime->create_index_allocator(ctx, volume_data_lr.get_index_space());
+    ialloc.alloc(num_points);
+
+    //Init logical region with data from VolumeData to (1) FID_VOL_DATA (2) FID_CORNER_POS (3) FID_GRADIENTS
+    IndexIterator itr(runtime, ctx, volume_data_lr.get_index_space());
+    for(int i=0; i<num_points; ++i){
+      assert(itr.has_next());
+      ptr_t data_ptr = itr.next();
+
+      fa_vol_data.write(data_ptr, volumeData[i]);
+    }
+
+ 
+    runtime->unmap_region(vol_data_pr);
+    volumeData = NULL;
+    color_tf = NULL;
+    alpha_tf = NULL;
+
+    return volume_data_lr;
+
+
+}
+void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim)
+{
+  float alpha = camera.fov;
+  float l = 1.0f;
+  float h = l * tan (alpha / 2.0 * (M_PI/180));
+  float aspectRatio = (float) xdim / ydim;
+  float w = aspectRatio * abs(h);
+  float dx = (2 * abs(w)) / xdim;
+  float dy = -(2 * abs(h)) / ydim;
+  float dxx = dx/2, dyy = dy/2;
+  Point3 K(-w, h, -l);
+
+
+  K.x += x * dx;
+  K.y += y * dy;
+  K.x += dxx;
+  K.y += dyy;
+
+  Matrix3 RotMat;
+  cyPoint3f f = camera.dir;
+  f. Normalize();
+
+  cyPoint3f s = f.Cross(camera.up);
+  s. Normalize();
+
+  cyPoint3f u = s.Cross(f);
+  u.Normalize();
+  const float pts[9] = {s.x, u.x, -f.x,
+			s.y, u.y, -f.y,
+			s.z, u.z, -f.z  };
+  RotMat.Set(pts);
+  Point3 cam_pos(camera.pos);
+  r.p = cam_pos;
+  r.dir =  K * RotMat;
+
+  r.dir.Normalize();
+}
+
+bool Box::IntersectRay(const Ray &ray, float t_max) const
+{
+    Ray r = ray;
+    float tmin  =  -t_max;
+    float tmax = t_max;
+    //if ray is inside box - return true
+    if (IsInside(r.p)) return true;
+    //get pairs of planes - x , y, z
+    // 0:(x_min,y_min,z_min), 1:(x_max,y_min,z_min)
+    // 2:(x_min,y_max,z_min), 3:(x_max,y_max,z_min)
+    // 4:(x_min,y_min,z_max), 5:(x_max,y_min,z_max)
+    // 6:(x_min,y_max,z_max), 7:(x_max,y_max,z_max)  }  }
+    float xl = Corner(0).x;
+    float xh = Corner(3).x;
+    float yl = Corner(0).y;
+    float yh = Corner(2).y;
+    float zl = Corner(0).z;
+    float zh = Corner(5).z;
+    
+    //Check intersection for X planes
+    if(r.p.x != 0.0){
+        float tx1 = (xl - ray.p.x)/ ray.dir.x;
+        float tx2 = (xh - ray.p.x)/ ray.dir.x;
+        
+        tmin = utils::max((float)tmin,(float) utils::min((float)tx1,tx2));
+        tmax = utils::min((float)tmax,(float) utils::max((float)tx1, tx2));
+    }
+    //Check intersection for Y planes
+    if(r.p.y != 0.0){
+        float tx1 = (yl - ray.p.y)/ ray.dir.y;
+        float tx2 = (yh - ray.p.y)/ ray.dir.y;
+        
+        tmin = max(tmin, min(tx1,tx2));
+        tmax = min(tmax, max(tx1, tx2));
+    }
+    
+    //Check intersection for Z planes
+    if(r.p.z != 0.0){
+        float tx1 = (zl - ray.p.z)/ ray.dir.z;
+        float tx2 = (zh - ray.p.z)/ ray.dir.z;
+        
+        tmin = max(tmin, min(tx1,tx2));
+        tmax = min(tmax, max(tx1, tx2));
+    }
+    
+    return tmax>=tmin;
+    
+}
+bool TraceSingleNode(const Ray &r, HitInfo &hInfo, const Node &node)
+{
+    Ray ray = r;
+    ray = node.ToNodeCoords(r);
+
+    const Object* obj = node.GetObject();
+    bool objHitTest = false;
+
+    
+    if(obj)    {
+        if(obj->IntersectRay(ray, hInfo)){
+            objHitTest=true;
+            hInfo.node = &node;
+        }
+    }
+    
+    if(objHitTest){
+       node.FromNodeCoords(hInfo);
+    }
+    return objHitTest;
 }
