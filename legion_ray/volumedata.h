@@ -12,7 +12,7 @@
 #include "cyColor.h"
 #include "cyPoint.h"
 #include "utils.h"
-namespace VolumeVis{
+
 class VolumeData
 {
 
@@ -43,5 +43,5 @@ class VolumeData
   void GetTransferFunction(cyColor** color_tf, float** alpha_tf, int &tf_size,unsigned char &min, unsigned char &max);
 
 };
-}
+
 #endif

@@ -1,5 +1,5 @@
 #include "volumedata.h"
-bool VolumeVis::VolumeData::Load(const char* filename, int xdim, int ydim, int zdim, uchar** data)
+bool VolumeData::Load(const char* filename, int xdim, int ydim, int zdim, uchar** data)
 {
 
   FILE *pFile;
@@ -20,7 +20,7 @@ bool VolumeVis::VolumeData::Load(const char* filename, int xdim, int ydim, int z
 
 }
 
-bool VolumeVis::VolumeData::LoadTF(const char* filename)
+bool VolumeData::LoadTF(const char* filename)
 {
    
   std::ifstream infile(filename, std::ifstream::in);
@@ -59,7 +59,7 @@ bool VolumeVis::VolumeData::LoadTF(const char* filename)
   
 }
 /*Using this to parse data and find range; min; max */
-void VolumeVis::VolumeData::CreateHistogram(uchar* volume_data, int size)
+void VolumeData::CreateHistogram(uchar* volume_data, int size)
 {
   unsigned char min = 255;
   unsigned char max = 0;
@@ -74,7 +74,7 @@ void VolumeVis::VolumeData::CreateHistogram(uchar* volume_data, int size)
   return;
 }
 
-void VolumeVis::VolumeData::CreateTransferFunction()
+void VolumeData::CreateTransferFunction()
 {
   colortf = new cyColor[this->n_bins];
   alphatf = new float[this->n_bins];
@@ -96,7 +96,7 @@ void VolumeVis::VolumeData::CreateTransferFunction()
   }
 }
 
-void VolumeVis::VolumeData::GetTransferFunction(cyColor** color_tf, float** alpha_tf, int &tf_size, unsigned char &min, unsigned char &max)
+void VolumeData::GetTransferFunction(cyColor** color_tf, float** alpha_tf, int &tf_size, unsigned char &min, unsigned char &max)
 {
   *color_tf = this->colortf;
   *alpha_tf = this->alphatf;

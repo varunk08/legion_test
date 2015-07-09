@@ -4,17 +4,18 @@ Ray tracer written using Legion
 #include <math.h>
 #include <cmath>
 #include <iostream>
+#include "volumedata.h"
 #include "xmlload.h"
-#incldue "volumedata.h"
 #include "scene.h"
 #include "boxobject.h"
 #include "legion.h"
 
 //-----------------------------------------------------------------------------------------------------
 #define _USE_MATH_DEFINES;
+using namespace std;
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
-using namespace std;
+
 
 //-----------------------------------------------------------------------------------------------------
 enum TaskID{
@@ -54,8 +55,6 @@ bool init_volume_data ( unsigned char *volume_data, cyColor* color_tf, float* al
 			unsigned char &minData, unsigned char &maxData, int &tf_size,
 			int data_xdim, int data_ydim, int data_zdim,
 			const char* data_file, const char* tf_file);
-
-bool Box::IntersectRay(const Ray &ray, float t_max);
 bool TraceSingleNode(const Ray &r, HitInfo &hInfo, const Node &node);
 //-----------------------------------------------------------------------------------------------------
 
@@ -164,6 +163,7 @@ void top_level_task( const Task* task,
   int data_xdim = 256; int data_ydim = 256; int data_zdim = 256;
 
   //Have to deallocate uc_vol_data, color_tf, alpha_tf later
+  int size = data_xdim * data_ydim * data_zdim;
   unsigned char* uc_vol_data = NULL;
   cyColor* color_tf = NULL;
   float* alpha_tf = NULL;
@@ -282,6 +282,7 @@ void top_level_task( const Task* task,
 //-----------------------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
+
   HighLevelRuntime::set_top_level_task_id( TOP_LEVEL_ID);
 
   HighLevelRuntime::register_legion_task<top_level_task>(TOP_LEVEL_ID,
@@ -307,7 +308,7 @@ bool init_volume_data ( unsigned char *volData, cyColor* color_tf, float* alpha_
 			const char* data_file, const char* tf_file)
 {
 
-  VolumeVis::VolumeData DataLoader;
+  VolumeData DataLoader;
 
   if( DataLoader.Load(data_file, data_xdim, data_ydim, data_zdim, &volData) 
       && DataLoader.LoadTF(tf_file) ) {
@@ -348,7 +349,7 @@ transfer function
 
     //Field space
     FieldSpace volume_data_fs = runtime->create_field_space(ctx);
-    FieldAllocator falloc = runtime->create_field_allocator(ctx, data_fs);
+    FieldAllocator falloc = runtime->create_field_allocator(ctx, volume_data_fs);
     falloc.allocate_field(sizeof(unsigned char), FID_VOL_DATA);
     falloc.allocate_field(sizeof(Point3f), FID_CORNER_POS);
     falloc.allocate_field(sizeof(Point3f), FID_GRADIENTS);
@@ -367,7 +368,7 @@ transfer function
     PhysicalRegion vol_data_pr = runtime->map_region(ctx, vol_req);
 
     //Create Region accessors
-    vol_data_ps.wait_until_valid();
+    vol_data_pr.wait_until_valid();
     RegionAccessor <AccessorType::Generic, unsigned char> fa_vol_data = vol_data_pr.get_field_accessor(FID_VOL_DATA).typeify<unsigned char>();
     RegionAccessor<AccessorType::Generic, Point3f> fa_corner_pos = vol_data_pr.get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
     RegionAccessor<AccessorType::Generic, Point3f> fa_gradients = vol_data_pr.get_field_accessor(FID_GRADIENTS).typeify<Point3f>();
@@ -381,15 +382,12 @@ transfer function
     for(int i=0; i<num_points; ++i){
       assert(itr.has_next());
       ptr_t data_ptr = itr.next();
-
+      cout<<volumeData[i]<<endl;
       fa_vol_data.write(data_ptr, volumeData[i]);
     }
 
  
-    runtime->unmap_region(vol_data_pr);
-    volumeData = NULL;
-    color_tf = NULL;
-    alpha_tf = NULL;
+    runtime->unmap_region(ctx, vol_data_pr);
 
     return volume_data_lr;
 
