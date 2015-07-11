@@ -65,7 +65,7 @@ class BoxObject : public Object
     std::cout << "Calculating corner positions for "<<_size<<" points ..." <<std::endl;
 
     CornerPos.resize( this->_size );
-
+    int index=0;
     float startX = -1.0f;
     float startY = -1.0f;
     float startZ = -1.0f;
@@ -79,7 +79,9 @@ class BoxObject : public Object
 	    for(int x = 0; x < xdim; x++)
 	      {
 		newX = startX + x * (2.0 / (xdim - 1));
-		CornerPos[getIndex(x,y,z)] = Point3(newX, newY, newZ);
+		index = getIndex(x,y,z);
+		printf("%d\n",index);
+		CornerPos[index] = Point3(newX, newY, newZ);
 	      }
 	  }
       }
