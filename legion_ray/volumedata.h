@@ -17,8 +17,7 @@ class VolumeData
 {
 
  public:
-  int tf_size;
-  int n_bins;
+  int num_tf_pts;
   int xdim, ydim, zdim;
   cyColor* colortf;
   float* alphatf;
@@ -36,9 +35,6 @@ class VolumeData
   /*Loads the transer function file; ImageVis3D format .1dt*/
   bool LoadTF(const char* filename);
   
-  /*Creates transfer function;*/
-  void CreateTransferFunction();
-
   /*Getter for transfer functions*/
   void GetTransferFunction(cyColor** color_tf, float** alpha_tf, int &tf_size,unsigned char &min, unsigned char &max);
 

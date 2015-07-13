@@ -33,6 +33,7 @@ bool VolumeData::LoadTF(const char* filename)
   std::getline(infile, instr);
   const int num = atoi ( instr.c_str() );
   std::cout<<"Data: "<< num <<std::endl;
+  this->num_tf_pts = num;
   tf_rgba = new cyPoint4f[num];
   this->colortf = new cyColor[num];
   this->alphatf = new float[num];
@@ -74,33 +75,12 @@ void VolumeData::CreateHistogram(uchar* volume_data, int size)
   return;
 }
 
-void VolumeData::CreateTransferFunction()
-{
-  colortf = new cyColor[this->n_bins];
-  alphatf = new float[this->n_bins];
-
-  /* assigning a single color and alpha value to each bin for now; need a better transfer function*/
-  for(int i = 0; i < n_bins; i++){
-    if ( i <= (int)n_bins/2 ){
-	colortf[i] = cyColor(125, 35, 0);
-	alphatf[i] = 0.01;
-	if(i >= 15 && i <= 17) {
-	  colortf[i] = cyColor(12,150,12);
-	  alphatf[i] = 0.4;
-	}
-      }
-      else{
-	colortf[i] = cyColor(0, 160, 189);
-	alphatf[i] = 0.0;
-      }
-  }
-}
 
 void VolumeData::GetTransferFunction(cyColor** color_tf, float** alpha_tf, int &tf_size, unsigned char &min, unsigned char &max)
 {
   *color_tf = this->colortf;
   *alpha_tf = this->alphatf;
-  tf_size = this->n_bins;
+  tf_size = this->num_tf_pts;
   min = this->minData;
   max = this->maxData;
 }

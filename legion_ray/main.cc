@@ -29,6 +29,8 @@ enum FieldSpaceID{
   FID_VOL_DATA,
   FID_CORNER_POS,
   FID_GRADIENTS,
+  FID_COLOR_TF,
+  FID_ALPHA_TF,
 };
 
 //Info needed by each task to perform rendering calculations
@@ -52,10 +54,11 @@ struct Point3f
 //-----------------------------------------------------------------------------------------------------
 //Function signatures
 void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim);
-LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
-			       unsigned char *volume_data, 
+LogicalRegion load_tf_data( int tf_size, cyColor* color_tf, float* alpha_tf, Context ctx, HighLevelRuntime *runtime);
+LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim, 
+			       unsigned char *volume_data,
 			       Context ctx, HighLevelRuntime *runtime);
-bool init_volume_data ( unsigned char **volume_data, cyColor* color_tf, float* alpha_tf,
+bool init_volume_data ( unsigned char **volume_data, cyColor** color_tf, float** alpha_tf,
 			unsigned char &minData, unsigned char &maxData, int &tf_size,
 			int data_xdim, int data_ydim, int data_zdim,
 			const char* data_file, const char* tf_file);
@@ -174,15 +177,17 @@ void top_level_task( const Task* task,
   unsigned char minData; 
   unsigned char maxData;
   int tf_size;
-  if( !init_volume_data (&uc_vol_data, color_tf, alpha_tf,
+  if( !init_volume_data (&uc_vol_data, &color_tf, &alpha_tf,
 			 minData, maxData, tf_size,
 			 data_xdim, data_ydim, data_zdim,
 			 data_file, tf_file )){
     cout<<" Fatal error"<<endl;
     return;
   }
+
   LogicalRegion volume_lr = load_volume_data(data_xdim, data_ydim, data_zdim,
 					     uc_vol_data, ctx, runtime);
+  LogicalRegion tf_lr = load_tf_data(tf_size, color_tf, alpha_tf, ctx, runtime);
   delete [] uc_vol_data;
   delete [] color_tf;
   delete [] alpha_tf;
@@ -310,7 +315,7 @@ int main(int argc, char **argv)
 
 }
 //-----------------------------------------------------------------------------------------------------
-bool init_volume_data ( unsigned char **volData, cyColor* color_tf, float* alpha_tf,
+bool init_volume_data ( unsigned char **volData, cyColor **color_tf, float **alpha_tf,
 			unsigned char &minData, unsigned char &maxData, int &tf_size,
 			int data_xdim, int data_ydim, int data_zdim,
 			const char* data_file, const char* tf_file)
@@ -321,7 +326,7 @@ bool init_volume_data ( unsigned char **volData, cyColor* color_tf, float* alpha
   if( DataLoader.Load(data_file, data_xdim, data_ydim, data_zdim, volData) 
       && DataLoader.LoadTF(tf_file) ) {
     std::cout<<"Loaded data file: "<<data_file<<std::endl;
-    DataLoader.GetTransferFunction( &color_tf, &alpha_tf, tf_size, minData, maxData );
+    DataLoader.GetTransferFunction( color_tf, alpha_tf, tf_size, minData, maxData );
     //theBoxObject.SetTransferFunction(color_tf, alpha_tf, tf_size, minData, maxData);
   }
   else {
@@ -334,22 +339,52 @@ int getIndex(int x, int y, int z, int xdim, int ydim)
 {
   return ( z * ydim + y ) * xdim + x;
 }
+LogicalRegion load_tf_data( int tf_size, cyColor* color_tf, float* alpha_tf, Context ctx, HighLevelRuntime *runtime)
+{
+  //Index space and field space
+  Rect<1> tf_pts_rect(Point<1>(0), Point<1>(tf_size-1));
+  IndexSpace tf_is = runtime->create_index_space( ctx, Domain::from_rect<1>(tf_pts_rect));
+  FieldSpace tf_fs = runtime->create_field_space(ctx);
 
+  FieldAllocator tf_falloc = runtime->create_field_allocator(ctx, tf_fs);
+  tf_falloc.allocate_field ( sizeof ( Point3f ) , FID_COLOR_TF);
+  tf_falloc.allocate_field ( sizeof (float), FID_ALPHA_TF);
+
+  //Logical region
+  LogicalRegion tf_lr = runtime->create_logical_region( ctx, tf_is, tf_fs);
+  runtime->attach_name( tf_lr, "transfer_lr");
+
+  //Region requirements, accessor and writing data for transfer functions
+  RegionRequirement tf_req(tf_lr, READ_WRITE, EXCLUSIVE, tf_lr);
+  tf_req.add_field(FID_COLOR_TF);
+  tf_req.add_field(FID_ALPHA_TF);
+
+  PhysicalRegion tf_pr = runtime->map_region(ctx, tf_req);
+  tf_pr.wait_until_valid();
+
+  RegionAccessor< AccessorType::Generic, RGBColor> fa_tf_color = tf_pr.get_field_accessor(FID_COLOR_TF).typeify<RGBColor>();
+  RegionAccessor<AccessorType::Generic, float> fa_tf_alpha = tf_pr.get_field_accessor(FID_ALPHA_TF).typeify<float>();
+
+  //write data in color_tf and alpha_tf to logical region
+  cout<<"Writing transfer function to logical region"<<endl;
+  GenericPointInRectIterator<1> tf_itr(tf_pts_rect);
+  for(int i=0; i<tf_size; ++i){
+    RGBColor col;
+    col.r = color_tf[i].r; col.g = color_tf[i].g; col.b = color_tf[i].b;
+    fa_tf_color.write(DomainPoint::from_point<1>(tf_itr.p), col);
+    fa_tf_alpha.write(DomainPoint::from_point<1>(tf_itr.p), alpha_tf[i]);
+  }
+
+  runtime->unmap_region(ctx, tf_pr);
+
+  return tf_lr;
+
+}
 LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
-			       unsigned char *volumeData, 
+			       unsigned char *volumeData,
 			       Context ctx, HighLevelRuntime *runtime)
 {
 
-  /*
-    1 logical region
-    1 index space - xdim*ydim*zdim 
-    3 fields xdim*ydim*zdim size - corner pos (3 floats), data_points (1 uchar), gradients (3 floats)
-
-    2 logical region?
-    transfer function
-  */
-
-  cout<<"Creating Logical regions for volume data"<<endl;
   int num_points = data_xdim * data_ydim * data_zdim;
 
   //Index space
@@ -358,6 +393,8 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 
   //Field space
   FieldSpace volume_data_fs = runtime->create_field_space(ctx);
+
+
   FieldAllocator falloc = runtime->create_field_allocator(ctx, volume_data_fs);
   falloc.allocate_field(sizeof(unsigned char), FID_VOL_DATA);
   falloc.allocate_field(sizeof(Point3f), FID_CORNER_POS);
@@ -384,13 +421,13 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 
   //Init logical region with data from VolumeData to (1) FID_VOL_DATA (2) FID_CORNER_POS (3) FID_GRADIENTS
   //write volume data to logical region
-  GenericPointInRectIterator<1> itr(vol_points_rect);
+   GenericPointInRectIterator<1> itr(vol_points_rect);
   for(int i=0; i<num_points; ++i, itr++){
     fa_vol_data.write(DomainPoint::from_point<1>(itr.p), volumeData[i]);
   }
 
   //Calculate corner positions
-  cout<<"Calculating corner positions and gradients"<<endl;
+  cout<<"Writing volume data to logical region"<<endl;
   float startX = -1.0f;  float startY = -1.0f;  float startZ = -1.0f;
   float newX = 0.0f, newY = 0.0f, newZ = 0.0f;
   GenericPointInRectIterator<1> cpos_itr(vol_points_rect);
