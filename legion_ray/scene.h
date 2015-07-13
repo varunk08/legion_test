@@ -337,7 +337,6 @@ public:
 	Object*			GetObject() { return obj; }
 	void			SetObject(Object *object) { obj=object; }
 	void SetObjTransform(){
-	  printf("setting transform in node");
 	  obj->SetTransform(GetTransform(), GetInverseTransform(), GetPosition());
 	}
 	// Material management

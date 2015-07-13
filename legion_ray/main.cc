@@ -4,10 +4,12 @@ Ray tracer written using Legion
 #include <math.h>
 #include <cmath>
 #include <iostream>
+#include "common_types.h"
 #include "volumedata.h"
 #include "xmlload.h"
 #include "scene.h"
-#include "boxobject.h"
+#include "boxobject.h" // remove later
+#include "volume_geom.h"
 #include "legion.h"
 
 //-----------------------------------------------------------------------------------------------------
@@ -16,42 +18,8 @@ using namespace std;
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
 
-
 //-----------------------------------------------------------------------------------------------------
-enum TaskID{
-  TOP_LEVEL_ID,
-  PER_PIXEL_TASK_ID,
-  CHECK_TASK_ID,
-  VOLUME_RENDER_TASK_ID,
-};
-enum FieldSpaceID{
-  FID_OUT,
-  FID_VOL_DATA,
-  FID_CORNER_POS,
-  FID_GRADIENTS,
-  FID_COLOR_TF,
-  FID_ALPHA_TF,
-};
 
-//Info needed by each task to perform rendering calculations
-struct SceneData 
-{
-  Ray ray; //ray info
-  int coords[2];
-  int index;
-};
-
-struct RGBColor
-{
-  float r; float g; float b;
-};
-
-struct Point3f
-{
-  float x; float y; float z;
-};
-
-//-----------------------------------------------------------------------------------------------------
 //Function signatures
 void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim);
 LogicalRegion load_tf_data( int tf_size, cyColor* color_tf, float* alpha_tf, Context ctx, HighLevelRuntime *runtime);
@@ -78,9 +46,12 @@ void per_pixel_task ( const Task* task,
   //initialize node, object, transforms for each task
   Node *node = new Node;
   Sphere sphereObj;
+  VolumeGeometry vol_obj(256, 256, 256, regions, ctx, runtime); //fix later - must get dimensions from args or regions
   PointLight *light = new PointLight();
   LightList lightList;
   MtlBlinn *mtlBlinn =  new MtlBlinn();
+
+
   //material init
   mtlBlinn->SetDiffuse(cyColor(1.0,0.5,0.5));
   mtlBlinn->SetSpecular(cyColor(0.7,0.7,0.7));
@@ -90,14 +61,19 @@ void per_pixel_task ( const Task* task,
   lightList.push_back(light);
   //node init
   node->SetName("only_node");
-  node->SetObject(&sphereObj);
+  node->SetObject(&vol_obj);
+  //node->SetObject(&sphereObj);
   node->Scale(3,3,3);
-  node->Translate (Point3(0,0,-20));
+  node->Translate (Point3(0,0,-5));
+  node->SetObjTransform();
   node->SetMaterial(mtlBlinn);
 
-  FieldID fid = *(task->regions[0].privilege_fields.begin());
-  const int point = task->index_point.point_data[0];
-  
+  //init volume obj accessors
+  GPoint3fRA acc_corner_pos = regions[1].get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
+  vol_obj.init_region_accessors(acc_corner_pos);
+
+
+  //Writing data to logical region
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
   RGBColor col;
   col.r = 10.0f; col.g =10.0f; col.b=10.0f;
@@ -114,10 +90,8 @@ void per_pixel_task ( const Task* task,
       if ( TraceSingleNode ( r, hInfo, *node)){
 
 	//shade - fix magic number
-	cyColor shade = hInfo.node->GetMaterial()->Shade(r, hInfo, lightList, 0);
-	col.r = 200* shade.r;
-	col.g = 200* shade.g;
-	col.b = 200* shade.b;
+	cyColor shade = hInfo.shade;
+	col.r = 200 * shade.r;	col.g = 200 * shade.g;	col.b = 200 * shade.b;
       }
       //write data to logical region
       acc.write(DomainPoint::from_point<1>(pir.p), (RGBColor)col);
@@ -160,8 +134,8 @@ void top_level_task( const Task* task,
   BoxObject    theBoxObject;
 
   const char* filename = "scene.xml";
-
-  LoadScene(filename, rootNode, camera, renderImage,
+  /*write better version - most of the objects here are not needed except camera*/
+    LoadScene(filename, rootNode, camera, renderImage,
 	    materials, lights,  objList, theSphere,
 	    theBoxObject,  thePlane );
 
@@ -188,6 +162,7 @@ void top_level_task( const Task* task,
   LogicalRegion volume_lr = load_volume_data(data_xdim, data_ydim, data_zdim,
 					     uc_vol_data, ctx, runtime);
   LogicalRegion tf_lr = load_tf_data(tf_size, color_tf, alpha_tf, ctx, runtime);
+  
   delete [] uc_vol_data;
   delete [] color_tf;
   delete [] alpha_tf;
@@ -259,8 +234,21 @@ void top_level_task( const Task* task,
 							    WRITE_DISCARD,
 							    EXCLUSIVE,
 							    output_lr)); 
+  index_launcher.add_region_requirement(RegionRequirement(volume_lr, 0, READ_ONLY, EXCLUSIVE, volume_lr));
+  index_launcher.add_region_requirement(RegionRequirement(tf_lr, 0, READ_ONLY, EXCLUSIVE, tf_lr));
 
+  //output 
   index_launcher.region_requirements[0].add_field(FID_OUT);
+
+  //volume data
+  index_launcher.region_requirements[1].add_field(FID_VOL_DATA);
+  index_launcher.region_requirements[1].add_field(FID_CORNER_POS);
+  index_launcher.region_requirements[1].add_field(FID_GRADIENTS);
+
+  //transfer function data
+  index_launcher.region_requirements[2].add_field(FID_COLOR_TF);
+  index_launcher.region_requirements[2].add_field(FID_ALPHA_TF);
+
   runtime->execute_index_space(ctx, index_launcher);
 
   //output buffer
