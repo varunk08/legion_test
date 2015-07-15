@@ -51,7 +51,6 @@ void per_pixel_task ( const Task* task,
   LightList lightList;
   MtlBlinn *mtlBlinn =  new MtlBlinn();
 
-
   //material init
   mtlBlinn->SetDiffuse(cyColor(1.0,0.5,0.5));
   mtlBlinn->SetSpecular(cyColor(0.7,0.7,0.7));
@@ -63,16 +62,24 @@ void per_pixel_task ( const Task* task,
   node->SetName("only_node");
   node->SetObject(&vol_obj);
   //node->SetObject(&sphereObj);
-  node->Scale(3,3,3);
+  node->Scale(2,2,2);
+  node->Rotate(Point3(0,1,0), 30);
+  //node->Rotate(Point3(1,0,0), 30);
   node->Translate (Point3(0,0,-5));
   node->SetObjTransform();
   node->SetMaterial(mtlBlinn);
 
   //init volume obj accessors
   GPoint3fRA acc_corner_pos = regions[1].get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
-  vol_obj.init_region_accessors(acc_corner_pos);
-
-
+  GucharRA acc_vol_data = regions[1].get_field_accessor(FID_VOL_DATA).typeify<unsigned char>();
+  GPoint3fRA acc_gradients = regions[1].get_field_accessor(FID_GRADIENTS).typeify<Point3f>();
+  GRGBColorRA acc_color_tf = regions[2].get_field_accessor(FID_COLOR_TF).typeify<RGBColor>();
+  GfloatRA acc_alpha_tf = regions[2].get_field_accessor(FID_ALPHA_TF).typeify<float>();
+  //1 - volume data; 2 - tf data
+  vol_obj.init_logical_regions(task->regions[1].region, task->regions[2].region,
+				acc_vol_data, acc_corner_pos, acc_gradients, acc_color_tf, acc_alpha_tf);
+  const int point = task->index_point.point_data[0];
+  cout<<"Rendering block: "<<point<<endl;
   //Writing data to logical region
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
   RGBColor col;
@@ -91,13 +98,18 @@ void per_pixel_task ( const Task* task,
 
 	//shade - fix magic number
 	cyColor shade = hInfo.shade;
-	col.r = 200 * shade.r;	col.g = 200 * shade.g;	col.b = 200 * shade.b;
+	col.r =  shade.r;
+	col.g = shade.g;
+	col.b = shade.b ;
       }
+      //      cout<<"Block "<<point<<" "<<index<<endl;
+
       //write data to logical region
       acc.write(DomainPoint::from_point<1>(pir.p), (RGBColor)col);
       col.r = 10.0f; col.g =10.0f; col.b=10.0f;
       ++index;
     }
+  cout<<"Done rendering  with block "<<point<<endl;
 
 }
 //-----------------------------------------------------------------------------------------------------
@@ -234,8 +246,8 @@ void top_level_task( const Task* task,
 							    WRITE_DISCARD,
 							    EXCLUSIVE,
 							    output_lr)); 
-  index_launcher.add_region_requirement(RegionRequirement(volume_lr, 0, READ_ONLY, EXCLUSIVE, volume_lr));
-  index_launcher.add_region_requirement(RegionRequirement(tf_lr, 0, READ_ONLY, EXCLUSIVE, tf_lr));
+  index_launcher.add_region_requirement(RegionRequirement(volume_lr, 0, READ_ONLY, RELAXED, volume_lr));
+  index_launcher.add_region_requirement(RegionRequirement(tf_lr, 0, READ_ONLY, RELAXED, tf_lr));
 
   //output 
   index_launcher.region_requirements[0].add_field(FID_OUT);
@@ -393,7 +405,7 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
   runtime->attach_name(volume_data_lr, "volume_data_lr");
 
   //Create Region requirement
-  RegionRequirement vol_req (volume_data_lr, READ_WRITE, EXCLUSIVE, volume_data_lr);
+  RegionRequirement vol_req (volume_data_lr, READ_ONLY,RELAXED , volume_data_lr);
   vol_req.add_field(FID_VOL_DATA);
   vol_req.add_field(FID_CORNER_POS);
   vol_req.add_field(FID_GRADIENTS);

@@ -48,7 +48,12 @@ class VolumeGeometry : public Object
   int data_ydim;
   int data_zdim;
   GPoint3fRA acc_corner_pos;
-
+  GucharRA acc_vol_data;
+  GPoint3fRA acc_gradients;
+  GRGBColorRA acc_color_tf;
+  GfloatRA acc_alpha_tf;
+  LogicalRegion corner_pos_lr;
+  LogicalRegion tf_lr;
  public:
   //constructor
   VolumeGeometry(int x_width, int y_width, int z_width,
@@ -58,7 +63,9 @@ class VolumeGeometry : public Object
   void SetTransferFunction(cyColor*  color_tf, float* alpha_tf, int n_bins, uchar &min, uchar  &max);
   bool IntersectRay(const Ray &ray, HitInfo &hInfo, int hitSide=HIT_FRONT ) const;
   Box GetBoundBox() const;
-  void init_region_accessors(GPoint3fRA &acc);
+  void init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr,
+			    GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col,
+			    GfloatRA &acc_alpha);
   void SetTransform(const Matrix3 &nodeToWorld, const Matrix3 &n2w_itm, const Point3 &pos );
 
  private:

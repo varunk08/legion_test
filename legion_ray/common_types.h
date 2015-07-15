@@ -39,7 +39,8 @@ struct Point3f
 
 typedef LegionRuntime::Accessor::RegionAccessor < LegionRuntime::Accessor::AccessorType::Generic, Point3f> GPoint3fRA;
 typedef LegionRuntime::Accessor::RegionAccessor < LegionRuntime::Accessor::AccessorType::Generic, float> GfloatRA;
-typedef LegionRuntime::Accessor::RegionAccessor < LegionRuntime::Accessor::AccessorType::Generic, RGBColor> GRBGColorRA;
+typedef LegionRuntime::Accessor::RegionAccessor < LegionRuntime::Accessor::AccessorType::Generic, RGBColor> GRGBColorRA;
+typedef LegionRuntime::Accessor::RegionAccessor < LegionRuntime::Accessor::AccessorType::Generic, unsigned char> GucharRA;
 
 //-----------------------------------------------------------------------------------------------------
 

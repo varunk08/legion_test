@@ -1,27 +1,34 @@
 #include "volume_geom.h"
 //-----------------------------------------------------------------------------------------------------
 
-VolumeGeometry::VolumeGeometry(int x_width, int y_width, int z_width,
-		 const std::vector<PhysicalRegion> &regions, Context ctx, HighLevelRuntime *runtime)
-    {
-      pmin = Point3(-1, -1, -1);
-      pmax = Point3(1, 1, 1);
-      int data_xdim = x_width;
-      int data_ydim = y_width;
-      int data_zdim = z_width;
-      this->vol_regions = regions;
-      this->ctx = ctx;
-      this->runtime = runtime;
-    }
+  VolumeGeometry::VolumeGeometry(int x_width, int y_width, int z_width,
+				 const std::vector<PhysicalRegion> &regions, Context ctx, HighLevelRuntime *runtime)
+  {
+    pmin = Point3(-1, -1, -1);
+    pmax = Point3(1, 1, 1);
+    this->data_xdim = x_width;
+    this->data_ydim = y_width;
+    this->data_zdim = z_width;
+    this->vol_regions = regions;
+    this->ctx = ctx;
+    this->runtime = runtime;
+  }
 
-Box VolumeGeometry::GetBoundBox() const
+  Box VolumeGeometry::GetBoundBox() const
   {
     return Box(-1,-1,-1,1,1,1);
   }
   //-----------------------------------------------------------------------------------------------------
-  void VolumeGeometry::init_region_accessors(GPoint3fRA &acc)
+void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr, GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col, GfloatRA &acc_alpha)
   {
     this->acc_corner_pos = acc;
+    this->acc_vol_data = vol_acc;
+    this->acc_gradients = acc_grads;
+    this->acc_color_tf = acc_col;
+    this->acc_alpha_tf = acc_alpha;
+
+    this->corner_pos_lr = vol_data_lr;
+    this->tf_lr = tf_lr;
   }
   //-----------------------------------------------------------------------------------------------------
   void VolumeGeometry::SetTransform(const Matrix3 &nodeToWorld, const Matrix3 &n2w_itm, const Point3 &pos ){
@@ -101,7 +108,8 @@ Box VolumeGeometry::GetBoundBox() const
       }
       bool noData = false;
       hInfo.shade=RayMarch(ray, hInfo, hitZ[st], hitZ[end], noData);
-      //hInfo.shade = cyColor(1,0,0);
+      return boxHit;
+      //      hInfo.shade = cyColor(1,0,0);
       if(!noData) {
 	hInfo.front =  true;
       }
@@ -114,6 +122,7 @@ Box VolumeGeometry::GetBoundBox() const
 
   cyColor VolumeGeometry::RayMarch(const Ray& ray, HitInfo &hInfo, HitInfo& start, HitInfo& end, bool &noData) const
   {
+
     cyColor shade = cyColor(0,0,0);
     float length = (float)end.z - start.z;
     float dist = sqrt(std::pow((float)end.p.x - start.p.x, 2.0f) + pow((float)end.p.y - start.p.y, 2.0f) + pow((float)end.p.z - start.p.z,  2.0f));
@@ -123,15 +132,50 @@ Box VolumeGeometry::GetBoundBox() const
     r.p = start.p;
     r.dir = end.p - start.p;
     r.Normalize();
-    float dt = (float)dist / (data_xdim * 2.0); 
+    float dt = (float)dist / (data_xdim);//*2.0f ); 
     float t = 0;
     Point3 sample;
     cyColor color_acc = cyColor(0,0,0);
     float alpha_acc = 0.0f;
     int num_iter = 0;
     noData = true;
+    /*    Domain dom = runtime->get_index_space_domain(ctx, this->corner_pos_lr.get_index_space());
+    Rect<1> rect = dom.get_rect<1>();
+    GenericPointInRectIterator<1> pir(rect); */
+    //	shade = cyColor( dist*200, dist*200, dist*200);
+    //	noData = false;
+    //	return shade;
+    std::vector<Point3f> x_bnd_vec(data_xdim);
+    std::vector<Point3f> y_bnd_vec(data_ydim);
+    std::vector<Point3f> z_bnd_vec(data_zdim);
+  
+
+    int ind;
+    Point3f cor_pos;
+    for(int x=0; x < data_xdim; x++){
+	ind = getIndex(x,0,0);
+	cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
+	x_bnd_vec.push_back(cor_pos);
+    }
+
+ 
+    for(int y=0; y < data_ydim; y++){
+      ind = getIndex(0,y,0);
+      cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
+      y_bnd_vec.push_back(cor_pos);
+    }
+
+ 
+    for(int z=0; z < data_zdim; z++){
+      ind = getIndex(0,0, z);
+      cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
+      z_bnd_vec.push_back(cor_pos);
+    }
+
     while ( t < dist ) {
+
       sample = start.p + t * r.dir;
+   
       int cx=-1,cy=-1,cz=-1;
       int low_ind;
       int up_ind;
@@ -139,17 +183,56 @@ Box VolumeGeometry::GetBoundBox() const
       Point3f up_bnd;
 
       for(int x=0; x < data_xdim -1; x++){
-	low_ind = getIndex(x,0,0);
-	up_ind = getIndex(x+1,0,0);
-	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(low_ind)));
-	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(up_ind)));
-
+	low_bnd = x_bnd_vec.at(x);
+	up_bnd = x_bnd_vec.at(x+1);
 	if(low_bnd.x < sample.x && up_bnd.x >= sample.x){
 	  cx = x;
 	  break;
 	}
       }
-	
+
+
+      for(int y=0; y < data_ydim-1; y++){
+
+	low_bnd = y_bnd_vec.at(y);
+	up_bnd = y_bnd_vec.at(y+1);
+
+	if(low_bnd.y < sample.y && up_bnd.y >= sample.y){
+	  cy = y;
+	  break;
+	}
+      }
+     
+      for(int z=0; z < data_zdim-1; z++){
+
+	low_bnd = z_bnd_vec.at(z);
+	up_bnd = z_bnd_vec.at(z+1);
+
+	if(low_bnd.z < sample.z && up_bnd.z >= sample.z){
+	  cz = z;
+	  break;
+	}
+
+      }
+
+      if(cx >=0 && cy >=0 && cz >=0 ){
+	noData = false;
+	shade = cyColor(cx,cy,cz);
+	break;
+      }
+
+      /*      for(int x=0; x < data_xdim -1; x++){
+	low_ind = getIndex(x,0,0);
+	up_ind = getIndex(x+1,0,0);
+	low_bnd =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(low_ind)));
+	up_bnd = (Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(up_ind)));
+	if(low_bnd.x < sample.x && up_bnd.x >= sample.x){
+	  cx = x;
+	  break;
+	}
+      }
+
+
       for(int y=0; y < data_ydim-1; y++){
 	low_ind = getIndex(0,y,0);
 	up_ind = getIndex(0,y+1,0);
@@ -161,7 +244,7 @@ Box VolumeGeometry::GetBoundBox() const
 	  break;
 	}
       }
-
+     
       for(int z=0; z < data_zdim-1; z++){
 	low_ind = getIndex(0,0,z);
 	up_ind = getIndex(0,0,z+1);
@@ -174,8 +257,17 @@ Box VolumeGeometry::GetBoundBox() const
 	}
 
       }
-      return cyColor(cx,cy,cz);
-      /*	
+
+
+      
+	if(cx >=0 && cy >=0 && cz >=0 ){
+	cout<<cx<<" "<<cy<<" "<<cz<<endl;
+	shade = cyColor( cx, cy, cz);
+	noData = false;
+	return shade;
+      }
+     
+
       if(cx >=0 && cy >=0 && cz >=0 ){
 	num_iter++;
 	float data_tot = TrilinearInterpolate(sample,cx,cy,cz);
@@ -219,13 +311,14 @@ Box VolumeGeometry::GetBoundBox() const
 	  }
 	}//iso surface rendering
       }//valid indices cx, cy, cz
-      t += dt;
 */
-
+      t += dt;
     }//while loop
     
-    //noData = true; //didnt find any data that meets the condition
-    shade = cyColor(125,125,0);
+
+    x_bnd_vec.clear();
+    y_bnd_vec.clear();
+    z_bnd_vec.clear();
     return shade;
     
   }
@@ -291,14 +384,15 @@ Box VolumeGeometry::GetBoundBox() const
   cyColor VolumeGeometry::GetColor(float density) const
   {
     int index = (density - (uint)minData)/((uint)maxData-(uint)minData) * 255;
-    return p_colortf[index];
+    RGBColor col = acc_color_tf.read(DomainPoint::from_point<1>(Point<1>(index)));
+    return cyColor(col.r, col.g, col.b);
   }
   //-----------------------------------------------------------------------------------------------------
   float VolumeGeometry::GetAlpha(float density) const
   {
     /*hard coded bin size of 1000 for now*/
     int index = (density - (uint)minData)/((uint)maxData-(uint)minData) * 255;
-    return p_alphatf[index];
+    return acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>(index)));//p_alphatf[index];
     
   }
   //-----------------------------------------------------------------------------------------------------
@@ -319,25 +413,28 @@ Box VolumeGeometry::GetBoundBox() const
   //-----------------------------------------------------------------------------------------------------
   float VolumeGeometry::TrilinearInterpolate(Point3 samplePt, int x, int y, int z) const
   {
-
+    cout<<"doing trilinear interpolation"<<endl;
     float data = 0;
     float xd, yd, zd;
     float c01, c23, c45, c67;
     float c0,c1;
     float val;
-    Point3 p1 =  CornerPos[getIndex(x,y,z)];
-    Point3 p2 = CornerPos[getIndex(x+1,y+1,z+1)];
+    Point3f t_p1 =  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));
+    Point3f t_p2 =  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
     float* v = new float[8];
 
-    v[0] = (unsigned int)us_dataPoints[getIndex(x,y,z)];
-    v[1] = (unsigned int)us_dataPoints[getIndex(x+1,y,z)];
-    v[2] = (unsigned int)us_dataPoints[getIndex(x,y+1,z)];
-    v[3] = (unsigned int)us_dataPoints[getIndex(x+1,y+1,z)];
-    v[4] = (unsigned int)us_dataPoints[getIndex(x+1,y,z+1)];
-    v[5] =(unsigned int) us_dataPoints[getIndex(x,y,z+1)];
-    v[6] =(unsigned int) us_dataPoints[getIndex(x,y+1,z+1)];
-    v[7] =(unsigned int) us_dataPoints[getIndex(x+1,y+1,z+1)];
+    v[0] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));
+    v[1] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y,z))));
+    v[2] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z))));
+    v[3] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z))));
+    v[4] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y,z+1))));
+    v[5] =(unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z+1))));
+    v[6] =(unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z+1))));
+    v[7] =(unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
 
+    Point3 p1, p2;
+    p1.x = t_p1.x;     p1.y = t_p1.y;     p1.z = t_p1.z; 
+    p2.x = t_p2.x;     p2.y = t_p2.y;     p2.z = t_p2.z; 
     xd = (samplePt.x - p1.x)/(p2.x - p1.x);
     yd = (samplePt.y - p1.y)/(p2.y - p1.y);
     zd = (samplePt.z - p1.z)/(p2.z - p1.z);
@@ -355,16 +452,30 @@ Box VolumeGeometry::GetBoundBox() const
   //-----------------------------------------------------------------------------------------------------
   Point3 VolumeGeometry::EstimateGradient(int x, int y, int z) const
   {
+    cout<<"estimating gradient"<<endl;
     /* maybe i can calculate this avg while calculating gradients; maybe needto trilinear interpolate gradient
        as well */
-    Point3 grad = Gradients[getIndex(x,y,z)];
-    grad += Gradients[getIndex(x+1,y,z)];
-    grad += Gradients[getIndex(x,y+1,z)];
-    grad += Gradients[getIndex(x+1,y+1,z)];
-    grad += Gradients[getIndex(x+1,y,z+1)];
-    grad += Gradients[getIndex(x,y,z+1)];
-    grad += Gradients[getIndex(x,y+1,z+1)];
-    grad += Gradients[getIndex(x+1,y+1,z+1)];
+    Point3 grad;
+    Point3f acc_g;
+    Point3f temp;
+    temp  =  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));
+    acc_g.x = temp.x;  acc_g.y = temp.y;  acc_g.z = temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y,z))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y,z+1))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z+1))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z+1))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+    temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
+    acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
+
+    grad.x = acc_g.x;    grad.y = acc_g.y;    grad.z = acc_g.z;
 
     grad.x /= -8.0; grad.y /= -8.0; grad.z /= -8.0;
     if(grad.x != 0 && grad.y!= 0 && grad.z!=0)
