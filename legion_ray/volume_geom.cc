@@ -19,7 +19,9 @@
     return Box(-1,-1,-1,1,1,1);
   }
   //-----------------------------------------------------------------------------------------------------
-void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr, GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col, GfloatRA &acc_alpha)
+void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr,
+					  GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads,
+					  GRGBColorRA &acc_col, GfloatRA &acc_alpha)
   {
     this->acc_corner_pos = acc;
     this->acc_vol_data = vol_acc;
@@ -29,7 +31,24 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 
     this->corner_pos_lr = vol_data_lr;
     this->tf_lr = tf_lr;
+
+    
   }
+  //-----------------------------------------------------------------------------------------------------
+void VolumeGeometry::init_tf_bounds(int min, int max)
+{
+  this->minData = min;
+  this->maxData = max;
+}
+  //-----------------------------------------------------------------------------------------------------
+void VolumeGeometry::set_lights(float intensity)
+{
+
+  this->light = new PointLight;
+  this->light->SetIntensity(cyColor(0.7,0.7,0.7));
+  this->light->SetPosition(Point3(0,10,0));
+ 
+}
   //-----------------------------------------------------------------------------------------------------
   void VolumeGeometry::SetTransform(const Matrix3 &nodeToWorld, const Matrix3 &n2w_itm, const Point3 &pos ){
     this->tm.Set(nodeToWorld.data);
@@ -83,7 +102,7 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
     tempHInfo.Init();
     tempHInfo.node = hInfo.node;
     tempHInfo.z = hInfo.z;
-    std::vector<HitInfo> hitZ;
+    std::vector<HitInfo> hitZ(2);
     hitZ.clear();
 
     for(int i = 0; i < 36; i+=3){
@@ -107,14 +126,14 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 	}
       }
       bool noData = false;
-      hInfo.shade=RayMarch(ray, hInfo, hitZ[st], hitZ[end], noData);
-      return boxHit;
-      //      hInfo.shade = cyColor(1,0,0);
+      hInfo.shade = RayMarch(ray, hInfo, hitZ[st], hitZ[end], noData);
+      //hInfo.shade = cyColor(1,0,0);
       if(!noData) {
 	hInfo.front =  true;
       }
       else boxHit = false; //no data (or) iso surface rendering
     }
+
     return boxHit;
   }
 
@@ -123,7 +142,7 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
   cyColor VolumeGeometry::RayMarch(const Ray& ray, HitInfo &hInfo, HitInfo& start, HitInfo& end, bool &noData) const
   {
 
-    cyColor shade = cyColor(0,0,0);
+    cyColor shade = cyColor(125,0,0); 
     float length = (float)end.z - start.z;
     float dist = sqrt(std::pow((float)end.p.x - start.p.x, 2.0f) + pow((float)end.p.y - start.p.y, 2.0f) + pow((float)end.p.z - start.p.z,  2.0f));
 
@@ -139,14 +158,17 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
     float alpha_acc = 0.0f;
     int num_iter = 0;
     noData = true;
+
+    
+
     /*    Domain dom = runtime->get_index_space_domain(ctx, this->corner_pos_lr.get_index_space());
     Rect<1> rect = dom.get_rect<1>();
     GenericPointInRectIterator<1> pir(rect); */
     //	shade = cyColor( dist*200, dist*200, dist*200);
     //	noData = false;
     //	return shade;
-    std::vector<Point3f> x_bnd_vec(data_xdim);
-    std::vector<Point3f> y_bnd_vec(data_ydim);
+    /*std::vector<Point3f> x_bnd_vec(data_xdim);
+        std::vector<Point3f> y_bnd_vec(data_ydim);
     std::vector<Point3f> z_bnd_vec(data_zdim);
   
 
@@ -171,7 +193,7 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
       cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
       z_bnd_vec.push_back(cor_pos);
     }
-
+    */
     while ( t < dist ) {
 
       sample = start.p + t * r.dir;
@@ -183,9 +205,15 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
       Point3f up_bnd;
 
       for(int x=0; x < data_xdim -1; x++){
-	low_bnd = x_bnd_vec.at(x);
-	up_bnd = x_bnd_vec.at(x+1);
-	if(low_bnd.x < sample.x && up_bnd.x >= sample.x){
+	//low_bnd = x_bnd_vec.at(x);
+	//up_bnd = x_bnd_vec.at(x+1);
+	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))));
+	 up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,0,0))));
+
+	if((float)low_bnd.x < sample.x && (float)up_bnd.x >= sample.x){
+	  /*	  cout<<"POSITIVE CX!"<<endl;
+	  cout<<"x: "<<low_bnd.x<<" y:"<<low_bnd.y<<" z: "<<low_bnd.z<<endl;
+	  cout<<"x: "<<sample.x<<" y:"<<sample.y<<" z: "<<sample.z<<endl;*/
 	  cx = x;
 	  break;
 	}
@@ -194,34 +222,40 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 
       for(int y=0; y < data_ydim-1; y++){
 
-	low_bnd = y_bnd_vec.at(y);
-	up_bnd = y_bnd_vec.at(y+1);
+	//	low_bnd = y_bnd_vec.at(y);
+	//up_bnd = y_bnd_vec.at(y+1);
+	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))));
+	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y+1,0))));
 
 	if(low_bnd.y < sample.y && up_bnd.y >= sample.y){
 	  cy = y;
+	  //	  cout<<"POSITIVE CY!"<<endl;
 	  break;
 	}
       }
      
       for(int z=0; z < data_zdim-1; z++){
 
-	low_bnd = z_bnd_vec.at(z);
-	up_bnd = z_bnd_vec.at(z+1);
+	//low_bnd = z_bnd_vec.at(z);
+	//up_bnd = z_bnd_vec.at(z+1);
+	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))));
+	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z+1))));
 
 	if(low_bnd.z < sample.z && up_bnd.z >= sample.z){
-	  cz = z;
+	  cz = z;	  
+	  //cout<<"POSITIVE CZ!"<<endl;
 	  break;
 	}
 
       }
-
+      /*
       if(cx >=0 && cy >=0 && cz >=0 ){
 	noData = false;
 	shade = cyColor(cx,cy,cz);
 	break;
       }
 
-      /*      for(int x=0; x < data_xdim -1; x++){
+      for(int x=0; x < data_xdim -1; x++){
 	low_ind = getIndex(x,0,0);
 	up_ind = getIndex(x+1,0,0);
 	low_bnd =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(low_ind)));
@@ -265,36 +299,35 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 	shade = cyColor( cx, cy, cz);
 	noData = false;
 	return shade;
-      }
-     
+z      }
+      */
 
       if(cx >=0 && cy >=0 && cz >=0 ){
 	num_iter++;
 	float data_tot = TrilinearInterpolate(sample,cx,cy,cz);
-	bool compositing = true;
+	//	cout<<"density: "<<data_tot<<endl;
+	bool compositing =true;
 	if( compositing ){
-
 	  Point3 P = sample;
 	  Point3 N = EstimateGradient(cx, cy, cz);
 	  cyColor cin = DoPhongShading(ray, P, N, GetColor(data_tot));
 	  float ain = GetAlpha(data_tot);
-
 	  //color accumulation; cacc += (1-opacc)*color*opacity;
 	  //Do phong shading
 	  color_acc += (1 - alpha_acc) * cin * ain;
 	  //alpha accumulation; opacc += (1- opacc)*opacity;
 	  alpha_acc += (1 - alpha_acc) * ain;
-
+	
 	  //compositing
-	  hInfo.p = P;
-	  hInfo.N = N;
-	  noData = false;
-	  hInfo.z += t;
-	  hInfo.volume = true;
-	  shade = color_acc;
-
 	  if( alpha_acc > 0.9 ){
-	    return shade;//break;
+	    hInfo.p = P;
+	    hInfo.N = N;
+	    noData = false;
+	    hInfo.z += t;
+	    hInfo.volume = true;
+	    shade = color_acc;
+	    return shade;
+	    //break;
 	  }
 	}//compositing
 	else {
@@ -307,33 +340,36 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 	    hInfo.z += t;
 	    hInfo.renderIsoSurface = true;
 	    hInfo.volume = false;
-	    return shade;
+
+	    //return shade;
+	    break;
 	  }
 	}//iso surface rendering
       }//valid indices cx, cy, cz
-*/
+
       t += dt;
     }//while loop
     
 
-    x_bnd_vec.clear();
+    /*  x_bnd_vec.clear();
     y_bnd_vec.clear();
-    z_bnd_vec.clear();
+    z_bnd_vec.clear();*/
     return shade;
     
   }
   //-----------------------------------------------------------------------------------------------------
   /*Shading needs: ray, lights, colors(amb, diff, spec)*/
   /*Lights are in world coords!! */
-  cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Point3 &norm, cyColor preCol) const
+cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Point3 &norm, cyColor preCol) const
   {
     /*
       Increase ambient
       Fix specular
     */
+
     cyColor shade;
     float amp = 3.0;
-    cyColor ambComponent = cyColor(0,0,0);
+    cyColor ambComponent = cyColor(0.2,0.2,0.2);
     cyColor diffuse = amp *  preCol;
     cyColor specular = cyColor(0.7f,0.7f,0.7f);
     cyColor ambInt =  amp * preCol;
@@ -342,14 +378,16 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
     Point3 P = TransformFrom(pt);
     Point3 N = VectorTransformFrom(norm);
     N.Normalize();
-    for ( unsigned int i=0; i<lights.size(); i++ ) {
+    /*    for ( unsigned int i=0; i<this->lights.size(); i++ ) {
       if(lights[i]->IsAmbient()){
-	cyColor intensity = lights[i]->Illuminate(P);
+	cyColor intensity = this->lights[i]->Illuminate(P);
 	ambComponent += (ambInt * intensity);
+
 	continue;
       }
       else{
-	Point3 L = -lights[i]->Direction(P);
+    */
+	Point3 L = -light->Direction(P);
 	L.Normalize();
             
 	Point3 V = TransformFrom(ray.p) - P;
@@ -366,44 +404,30 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 	S = (S > 0)?S:0.0f; //max
 	S = pow( (float)S , alpha );
 
-	cyColor intensity = lights[i]->Illuminate(P);
+	cyColor intensity = light->Illuminate(P);
 	allOther += intensity *  ((costheta>0?costheta:0)  * diffuse) + (S * specular);
-      }
-      /* finally add inta*cola + intall*costheta*(cold + s* colS)*/
+	//      }
+      // finally add inta*cola + intall*costheta*(cold + s* colS)
       shade = ambComponent  + allOther;
-    }
+      //      }
+
 
     return shade;
   }
   //-----------------------------------------------------------------------------------------------------
-  void VolumeGeometry::SetTransformedLights(LightList objCoordLights)
-  {
-    this->lights = objCoordLights;
-  }
-  //-----------------------------------------------------------------------------------------------------
   cyColor VolumeGeometry::GetColor(float density) const
   {
-    int index = (density - (uint)minData)/((uint)maxData-(uint)minData) * 255;
+    unsigned int index = (density - (unsigned int)minData)/((unsigned int)maxData-(unsigned int)minData) * 255;
     RGBColor col = acc_color_tf.read(DomainPoint::from_point<1>(Point<1>(index)));
+   
     return cyColor(col.r, col.g, col.b);
   }
   //-----------------------------------------------------------------------------------------------------
   float VolumeGeometry::GetAlpha(float density) const
   {
-    /*hard coded bin size of 1000 for now*/
-    int index = (density - (uint)minData)/((uint)maxData-(uint)minData) * 255;
-    return acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>(index)));//p_alphatf[index];
-    
-  }
-  //-----------------------------------------------------------------------------------------------------
-  void VolumeGeometry::SetTransferFunction(cyColor*  color_tf, float* alpha_tf, int n_bins, uchar &min, uchar  &max)
-  {
-    this->p_colortf = color_tf;
-    this->p_alphatf = alpha_tf;
-    this->tf_size = n_bins;
-    this->minData = min;
-    this->maxData = max;
-
+    int index = (density - (unsigned int)minData)/((unsigned int)maxData-(unsigned int)minData) * 255;
+    float alpha = acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>(index)));
+    return alpha;
   }
   //-----------------------------------------------------------------------------------------------------
   inline int VolumeGeometry::getIndex(int x, int y, int z) const
@@ -413,7 +437,7 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
   //-----------------------------------------------------------------------------------------------------
   float VolumeGeometry::TrilinearInterpolate(Point3 samplePt, int x, int y, int z) const
   {
-    cout<<"doing trilinear interpolation"<<endl;
+    //    cout<<"doing trilinear interpolation"<<endl;
     float data = 0;
     float xd, yd, zd;
     float c01, c23, c45, c67;
@@ -428,9 +452,9 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
     v[2] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z))));
     v[3] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z))));
     v[4] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y,z+1))));
-    v[5] =(unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z+1))));
-    v[6] =(unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z+1))));
-    v[7] =(unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
+    v[5] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z+1))));
+    v[6] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y+1,z+1))));
+    v[7] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
 
     Point3 p1, p2;
     p1.x = t_p1.x;     p1.y = t_p1.y;     p1.z = t_p1.z; 
@@ -452,13 +476,12 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
   //-----------------------------------------------------------------------------------------------------
   Point3 VolumeGeometry::EstimateGradient(int x, int y, int z) const
   {
-    cout<<"estimating gradient"<<endl;
+    //    cout<<"estimating gradient "<<x<<" "<<y<<" "<<z<<endl;
     /* maybe i can calculate this avg while calculating gradients; maybe needto trilinear interpolate gradient
        as well */
-    Point3 grad;
+    Point3 grad(0,0,0);
     Point3f acc_g;
-    Point3f temp;
-    temp  =  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));
+    Point3f temp =  (Point3f)acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));
     acc_g.x = temp.x;  acc_g.y = temp.y;  acc_g.z = temp.z; 
     temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y,z))));
     acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
@@ -474,12 +497,14 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
     acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
     temp=  acc_gradients.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
     acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
-
+  
     grad.x = acc_g.x;    grad.y = acc_g.y;    grad.z = acc_g.z;
-
+  
     grad.x /= -8.0; grad.y /= -8.0; grad.z /= -8.0;
     if(grad.x != 0 && grad.y!= 0 && grad.z!=0)
       grad.Normalize();
+
+    //    cout<<"done with grad estimation"<<endl;
     return grad;
     
   }

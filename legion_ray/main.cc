@@ -48,6 +48,7 @@ void per_pixel_task ( const Task* task,
   Sphere sphereObj;
   VolumeGeometry vol_obj(256, 256, 256, regions, ctx, runtime); //fix later - must get dimensions from args or regions
   PointLight *light = new PointLight();
+  AmbientLight *amb_light = new AmbientLight();
   LightList lightList;
   MtlBlinn *mtlBlinn =  new MtlBlinn();
 
@@ -55,16 +56,18 @@ void per_pixel_task ( const Task* task,
   mtlBlinn->SetDiffuse(cyColor(1.0,0.5,0.5));
   mtlBlinn->SetSpecular(cyColor(0.7,0.7,0.7));
   //light init
-  light->SetIntensity(0.7);
+  amb_light->SetIntensity(cyColor(0.2,0.2,0.2));
+  light->SetIntensity(cyColor(0.7,0.7,0.7));
   light->SetPosition(Point3(0,10,0));
+  lightList.push_back(amb_light);
   lightList.push_back(light);
   //node init
   node->SetName("only_node");
   node->SetObject(&vol_obj);
   //node->SetObject(&sphereObj);
   node->Scale(2,2,2);
-  node->Rotate(Point3(0,1,0), 30);
-  //node->Rotate(Point3(1,0,0), 30);
+  node->Rotate(Point3(0,0,1), 180);
+  node->Rotate(Point3(0,1,0), 120);
   node->Translate (Point3(0,0,-5));
   node->SetObjTransform();
   node->SetMaterial(mtlBlinn);
@@ -78,8 +81,10 @@ void per_pixel_task ( const Task* task,
   //1 - volume data; 2 - tf data
   vol_obj.init_logical_regions(task->regions[1].region, task->regions[2].region,
 				acc_vol_data, acc_corner_pos, acc_gradients, acc_color_tf, acc_alpha_tf);
+  vol_obj.init_tf_bounds(0, 255); //fix later
+  vol_obj.set_lights(0.8);
   const int point = task->index_point.point_data[0];
-  cout<<"Rendering block: "<<point<<endl;
+  cout<<"Starting Rendering block: "<<point<<endl;
   //Writing data to logical region
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
   RGBColor col;
@@ -98,18 +103,23 @@ void per_pixel_task ( const Task* task,
 
 	//shade - fix magic number
 	cyColor shade = hInfo.shade;
-	col.r =  shade.r;
+	col.r = 100 * shade.r;
+	col.g = 100 * shade.g;
+	col.b = 100 * shade.b ;
+	/*
+	col.r = shade.r;
 	col.g = shade.g;
-	col.b = shade.b ;
+	col.b = shade.b;
+	*/
       }
-      //      cout<<"Block "<<point<<" "<<index<<endl;
+      //cout<<"Block "<<point<<" "<<index<<endl;
 
       //write data to logical region
       acc.write(DomainPoint::from_point<1>(pir.p), (RGBColor)col);
       col.r = 10.0f; col.g =10.0f; col.b=10.0f;
       ++index;
     }
-  cout<<"Done rendering  with block "<<point<<endl;
+  cout<<"Done rendering block "<<point<<endl;
 
 }
 //-----------------------------------------------------------------------------------------------------
@@ -368,7 +378,7 @@ LogicalRegion load_tf_data( int tf_size, cyColor* color_tf, float* alpha_tf, Con
   //write data in color_tf and alpha_tf to logical region
   cout<<"Writing transfer function to logical region"<<endl;
   GenericPointInRectIterator<1> tf_itr(tf_pts_rect);
-  for(int i=0; i<tf_size; ++i){
+  for(int i=0; i<tf_size; ++i, tf_itr++){
     RGBColor col;
     col.r = color_tf[i].r; col.g = color_tf[i].g; col.b = color_tf[i].b;
     fa_tf_color.write(DomainPoint::from_point<1>(tf_itr.p), col);
@@ -430,6 +440,7 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
   cout<<"Writing volume data to logical region"<<endl;
   float startX = -1.0f;  float startY = -1.0f;  float startZ = -1.0f;
   float newX = 0.0f, newY = 0.0f, newZ = 0.0f;
+  Point3f c_pos;
   GenericPointInRectIterator<1> cpos_itr(vol_points_rect);
   for(int z = 0; z < data_zdim; z++)
     {
@@ -441,11 +452,13 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 	    {
 	      newX = startX + x * (2.0 / (data_xdim - 1));
 	      //Write corner position info to region
-	      Point3f c_pos;
+
 	      c_pos.x = newX; c_pos.y = newY; c_pos.z = newZ;
 
 	      //write corner position info to logical region
-	      fa_corner_pos.write(DomainPoint::from_point<1>(cpos_itr.p), c_pos);
+	      //fa_corner_pos.write(DomainPoint::from_point<1>(cpos_itr.p), c_pos);
+	      fa_corner_pos.write(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z,data_xdim,data_ydim))),
+				  (Point3f) c_pos);
 	      
 	      //calculate gradients for each point
 	      float xn, xp, yn, yp, zn, zp;
@@ -467,14 +480,19 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 	      N.z = zn - zp;
 
 	      //write gradients to logical region
-	      fa_gradients.write(DomainPoint::from_point<1>(cpos_itr.p), N);
+	      fa_gradients.write(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z,data_xdim,data_ydim))), N);
 	      cpos_itr++;
 
 	    }
 	}
     }
   runtime->unmap_region(ctx, vol_data_pr);
-
+  //TEST
+  cout<<"test print:"<<endl;
+  for(int i = 0; i< 10; i++){
+    Point3f pt = fa_corner_pos.read(DomainPoint::from_point<1>(Point<1>(i)));
+    cout<<"x: "<<pt.x<<" y:"<<pt.y<<" z: "<<pt.z<<endl;
+  }
   return volume_data_lr;
 
 

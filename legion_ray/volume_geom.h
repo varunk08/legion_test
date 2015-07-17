@@ -13,6 +13,7 @@
 #include "cyColor.h"
 #include "utils.h"
 #include "cyMatrix3.h"
+#include "lights.h"
 #include "legion.h"
 
 //-----------------------------------------------------------------------------------------------------
@@ -30,17 +31,11 @@ class VolumeGeometry : public Object
   Point3 pmin;
   Point3 pmax;
   int tf_size;
-  vector<Point3> CornerPos;
-  vector<Point3> Gradients;
-  uchar* us_dataPoints;
-  cyColor* p_colortf;
-  float* p_alphatf;
   uchar minData;
   uchar maxData;
   LightList lights;
   Matrix3 tm, itm;
   Point3 worldPos;
-
   std::vector<PhysicalRegion> vol_regions;
   Context ctx;
   HighLevelRuntime *runtime;
@@ -54,18 +49,20 @@ class VolumeGeometry : public Object
   GfloatRA acc_alpha_tf;
   LogicalRegion corner_pos_lr;
   LogicalRegion tf_lr;
+  PointLight *light;
  public:
   //constructor
   VolumeGeometry(int x_width, int y_width, int z_width,
 		 const std::vector<PhysicalRegion> &regions, Context ctx, HighLevelRuntime *runtime);
 
 
-  void SetTransferFunction(cyColor*  color_tf, float* alpha_tf, int n_bins, uchar &min, uchar  &max);
   bool IntersectRay(const Ray &ray, HitInfo &hInfo, int hitSide=HIT_FRONT ) const;
   Box GetBoundBox() const;
   void init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr,
 			    GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col,
 			    GfloatRA &acc_alpha);
+  void init_tf_bounds(int min, int max);
+  void set_lights(float intensity);
   void SetTransform(const Matrix3 &nodeToWorld, const Matrix3 &n2w_itm, const Point3 &pos );
 
  private:
@@ -77,7 +74,6 @@ class VolumeGeometry : public Object
   inline int getIndex(int x, int y, int z) const;
   float GetAlpha(float density) const;
   cyColor GetColor(float density) const;
-  void SetTransformedLights(LightList objCoordLights);
   cyColor DoPhongShading(const Ray &ray,const Point3 &pt, const Point3 &norm, cyColor preCol) const;
   cyColor RayMarch(const Ray& ray, HitInfo &hInfo, HitInfo& start, HitInfo& end, bool &noData) const;
   Point3 TransposeMult( const Matrix3 &m, const Point3 &dir ) const;
