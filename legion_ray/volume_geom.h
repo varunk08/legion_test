@@ -49,7 +49,8 @@ class VolumeGeometry : public Object
   GfloatRA acc_alpha_tf;
   LogicalRegion corner_pos_lr;
   LogicalRegion tf_lr;
-  PointLight *light;
+
+
  public:
   //constructor
   VolumeGeometry(int x_width, int y_width, int z_width,
@@ -62,7 +63,7 @@ class VolumeGeometry : public Object
 			    GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col,
 			    GfloatRA &acc_alpha);
   void init_tf_bounds(int min, int max);
-  void set_lights(float intensity);
+  void set_lights(LightList &lList);
   void SetTransform(const Matrix3 &nodeToWorld, const Matrix3 &n2w_itm, const Point3 &pos );
 
  private:

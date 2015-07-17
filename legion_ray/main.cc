@@ -81,17 +81,20 @@ void per_pixel_task ( const Task* task,
   //1 - volume data; 2 - tf data
   vol_obj.init_logical_regions(task->regions[1].region, task->regions[2].region,
 				acc_vol_data, acc_corner_pos, acc_gradients, acc_color_tf, acc_alpha_tf);
-  vol_obj.init_tf_bounds(0, 255); //fix later
-  vol_obj.set_lights(0.8);
+  vol_obj.init_tf_bounds(0, 255); //fix later - magic number
+  vol_obj.set_lights(lightList);
   const int point = task->index_point.point_data[0];
+
   cout<<"Starting Rendering block: "<<point<<endl;
-  //Writing data to logical region
+ 
+ //Writing data to logical region
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
   RGBColor col;
   col.r = 10.0f; col.g =10.0f; col.b=10.0f;
   Domain dom = runtime->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
   Rect<1> rect = dom.get_rect<1>();
   int index = 0;
+
   for(GenericPointInRectIterator<1> pir(rect); pir; pir++)
     {
       Ray r = rays[index];
@@ -103,16 +106,12 @@ void per_pixel_task ( const Task* task,
 
 	//shade - fix magic number
 	cyColor shade = hInfo.shade;
-	col.r = 100 * shade.r;
-	col.g = 100 * shade.g;
-	col.b = 100 * shade.b ;
-	/*
-	col.r = shade.r;
-	col.g = shade.g;
-	col.b = shade.b;
-	*/
+	float amp = 110.0f; //amp to control intensity - fix later
+	col.r = amp * shade.r;
+	col.g = amp * shade.g;
+	col.b = amp * shade.b ;
+
       }
-      //cout<<"Block "<<point<<" "<<index<<endl;
 
       //write data to logical region
       acc.write(DomainPoint::from_point<1>(pir.p), (RGBColor)col);
@@ -456,7 +455,6 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 	      c_pos.x = newX; c_pos.y = newY; c_pos.z = newZ;
 
 	      //write corner position info to logical region
-	      //fa_corner_pos.write(DomainPoint::from_point<1>(cpos_itr.p), c_pos);
 	      fa_corner_pos.write(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z,data_xdim,data_ydim))),
 				  (Point3f) c_pos);
 	      
@@ -487,16 +485,10 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 	}
     }
   runtime->unmap_region(ctx, vol_data_pr);
-  //TEST
-  cout<<"test print:"<<endl;
-  for(int i = 0; i< 10; i++){
-    Point3f pt = fa_corner_pos.read(DomainPoint::from_point<1>(Point<1>(i)));
-    cout<<"x: "<<pt.x<<" y:"<<pt.y<<" z: "<<pt.z<<endl;
-  }
+
   return volume_data_lr;
-
-
 }
+//-----------------------------------------------------------------------------------------------------
 void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim)
 {
   float alpha = camera.fov;
@@ -534,7 +526,7 @@ void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim)
 
   r.dir.Normalize();
 }
-
+//-----------------------------------------------------------------------------------------------------
 bool Box::IntersectRay(const Ray &ray, float t_max) const
 {
     Ray r = ray;
@@ -583,6 +575,7 @@ bool Box::IntersectRay(const Ray &ray, float t_max) const
     return tmax>=tmin;
     
 }
+//-----------------------------------------------------------------------------------------------------
 bool TraceSingleNode(const Ray &r, HitInfo &hInfo, const Node &node)
 {
     Ray ray = r;
@@ -604,3 +597,4 @@ bool TraceSingleNode(const Ray &r, HitInfo &hInfo, const Node &node)
     }
     return objHitTest;
 }
+//-----------------------------------------------------------------------------------------------------

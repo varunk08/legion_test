@@ -13,12 +13,12 @@
     this->ctx = ctx;
     this->runtime = runtime;
   }
-
+//-----------------------------------------------------------------------------------------------------
   Box VolumeGeometry::GetBoundBox() const
   {
     return Box(-1,-1,-1,1,1,1);
   }
-  //-----------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------
 void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr,
 					  GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads,
 					  GRGBColorRA &acc_col, GfloatRA &acc_alpha)
@@ -34,43 +34,37 @@ void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegi
 
     
   }
-  //-----------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------
 void VolumeGeometry::init_tf_bounds(int min, int max)
 {
   this->minData = min;
   this->maxData = max;
 }
-  //-----------------------------------------------------------------------------------------------------
-void VolumeGeometry::set_lights(float intensity)
+//-----------------------------------------------------------------------------------------------------
+void VolumeGeometry::set_lights(LightList &lList)
 {
-
-  this->light = new PointLight;
+ PointLight *light = new PointLight();
+  AmbientLight *amb_light = new AmbientLight();
+ 
+ 
+ amb_light->SetIntensity(cyColor(0.2,0.2,0.2));
+  light->SetIntensity(cyColor(0.7,0.7,0.7));
+  light->SetPosition(Point3(0,10,0));
+  this->lights.push_back(amb_light);
+  this->lights.push_back(light);
+ 
+  /*  this->light = new PointLight;
   this->light->SetIntensity(cyColor(0.7,0.7,0.7));
-  this->light->SetPosition(Point3(0,10,0));
+  this->light->SetPosition(Point3(0,10,0));*/
  
 }
-  //-----------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------
   void VolumeGeometry::SetTransform(const Matrix3 &nodeToWorld, const Matrix3 &n2w_itm, const Point3 &pos ){
     this->tm.Set(nodeToWorld.data);
     this->itm.Set(n2w_itm.data);
     this->worldPos = Point3(pos);
   }
-  Point3 VolumeGeometry::TransposeMult( const Matrix3 &m, const Point3 &dir ) const
-  {
-    Point3 d;
-    d.x = m.GetColumn(0) % dir;
-    d.y = m.GetColumn(1) % dir;
-    d.z = m.GetColumn(2) % dir;
-    return d;
-  }
-
-  // Transform from the local coordinate system
-  Point3 VolumeGeometry::TransformFrom( const Point3 &p ) const { return (tm) * (p) + worldPos; }
-
-  Point3 VolumeGeometry::VectorTransformFrom( const Point3 &dir ) const { return TransposeMult(itm,dir); }
-
-  //-----------------------------------------------------------------------------------------------------
-
+//-----------------------------------------------------------------------------------------------------
   bool VolumeGeometry::IntersectRay(const Ray &ray, HitInfo &hInfo, int hitSide) const
   {
     bool boxHit = false;
@@ -127,7 +121,6 @@ void VolumeGeometry::set_lights(float intensity)
       }
       bool noData = false;
       hInfo.shade = RayMarch(ray, hInfo, hitZ[st], hitZ[end], noData);
-      //hInfo.shade = cyColor(1,0,0);
       if(!noData) {
 	hInfo.front =  true;
       }
@@ -151,7 +144,7 @@ void VolumeGeometry::set_lights(float intensity)
     r.p = start.p;
     r.dir = end.p - start.p;
     r.Normalize();
-    float dt = (float)dist / (data_xdim);//*2.0f ); 
+    float dt = (float)dist / (data_xdim * 2.0f ); 
     float t = 0;
     Point3 sample;
     cyColor color_acc = cyColor(0,0,0);
@@ -159,45 +152,8 @@ void VolumeGeometry::set_lights(float intensity)
     int num_iter = 0;
     noData = true;
 
-    
-
-    /*    Domain dom = runtime->get_index_space_domain(ctx, this->corner_pos_lr.get_index_space());
-    Rect<1> rect = dom.get_rect<1>();
-    GenericPointInRectIterator<1> pir(rect); */
-    //	shade = cyColor( dist*200, dist*200, dist*200);
-    //	noData = false;
-    //	return shade;
-    /*std::vector<Point3f> x_bnd_vec(data_xdim);
-        std::vector<Point3f> y_bnd_vec(data_ydim);
-    std::vector<Point3f> z_bnd_vec(data_zdim);
-  
-
-    int ind;
-    Point3f cor_pos;
-    for(int x=0; x < data_xdim; x++){
-	ind = getIndex(x,0,0);
-	cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
-	x_bnd_vec.push_back(cor_pos);
-    }
-
- 
-    for(int y=0; y < data_ydim; y++){
-      ind = getIndex(0,y,0);
-      cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
-      y_bnd_vec.push_back(cor_pos);
-    }
-
- 
-    for(int z=0; z < data_zdim; z++){
-      ind = getIndex(0,0, z);
-      cor_pos =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(ind)));
-      z_bnd_vec.push_back(cor_pos);
-    }
-    */
     while ( t < dist ) {
-
       sample = start.p + t * r.dir;
-   
       int cx=-1,cy=-1,cz=-1;
       int low_ind;
       int up_ind;
@@ -205,15 +161,11 @@ void VolumeGeometry::set_lights(float intensity)
       Point3f up_bnd;
 
       for(int x=0; x < data_xdim -1; x++){
-	//low_bnd = x_bnd_vec.at(x);
-	//up_bnd = x_bnd_vec.at(x+1);
+
 	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))));
-	 up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,0,0))));
+	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,0,0))));
 
 	if((float)low_bnd.x < sample.x && (float)up_bnd.x >= sample.x){
-	  /*	  cout<<"POSITIVE CX!"<<endl;
-	  cout<<"x: "<<low_bnd.x<<" y:"<<low_bnd.y<<" z: "<<low_bnd.z<<endl;
-	  cout<<"x: "<<sample.x<<" y:"<<sample.y<<" z: "<<sample.z<<endl;*/
 	  cx = x;
 	  break;
 	}
@@ -222,90 +174,31 @@ void VolumeGeometry::set_lights(float intensity)
 
       for(int y=0; y < data_ydim-1; y++){
 
-	//	low_bnd = y_bnd_vec.at(y);
-	//up_bnd = y_bnd_vec.at(y+1);
+
 	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))));
 	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y+1,0))));
 
 	if(low_bnd.y < sample.y && up_bnd.y >= sample.y){
 	  cy = y;
-	  //	  cout<<"POSITIVE CY!"<<endl;
 	  break;
 	}
       }
      
       for(int z=0; z < data_zdim-1; z++){
 
-	//low_bnd = z_bnd_vec.at(z);
-	//up_bnd = z_bnd_vec.at(z+1);
 	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))));
 	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z+1))));
 
 	if(low_bnd.z < sample.z && up_bnd.z >= sample.z){
 	  cz = z;	  
-	  //cout<<"POSITIVE CZ!"<<endl;
 	  break;
 	}
 
       }
-      /*
-      if(cx >=0 && cy >=0 && cz >=0 ){
-	noData = false;
-	shade = cyColor(cx,cy,cz);
-	break;
-      }
-
-      for(int x=0; x < data_xdim -1; x++){
-	low_ind = getIndex(x,0,0);
-	up_ind = getIndex(x+1,0,0);
-	low_bnd =(Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(low_ind)));
-	up_bnd = (Point3f) acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(up_ind)));
-	if(low_bnd.x < sample.x && up_bnd.x >= sample.x){
-	  cx = x;
-	  break;
-	}
-      }
-
-
-      for(int y=0; y < data_ydim-1; y++){
-	low_ind = getIndex(0,y,0);
-	up_ind = getIndex(0,y+1,0);
-	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(low_ind)));
-	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(up_ind)));
-
-	if(low_bnd.y < sample.y && up_bnd.y >= sample.y){
-	  cy = y;
-	  break;
-	}
-      }
-     
-      for(int z=0; z < data_zdim-1; z++){
-	low_ind = getIndex(0,0,z);
-	up_ind = getIndex(0,0,z+1);
-	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(low_ind)));
-	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(up_ind)));
-
-	if(low_bnd.z < sample.z && up_bnd.z >= sample.z){
-	  cz = z;
-	  break;
-	}
-
-      }
-
-
-      
-	if(cx >=0 && cy >=0 && cz >=0 ){
-	cout<<cx<<" "<<cy<<" "<<cz<<endl;
-	shade = cyColor( cx, cy, cz);
-	noData = false;
-	return shade;
-z      }
-      */
 
       if(cx >=0 && cy >=0 && cz >=0 ){
 	num_iter++;
 	float data_tot = TrilinearInterpolate(sample,cx,cy,cz);
-	//	cout<<"density: "<<data_tot<<endl;
 	bool compositing =true;
 	if( compositing ){
 	  Point3 P = sample;
@@ -326,8 +219,7 @@ z      }
 	    hInfo.z += t;
 	    hInfo.volume = true;
 	    shade = color_acc;
-	    return shade;
-	    //break;
+	    break;
 	  }
 	}//compositing
 	else {
@@ -340,8 +232,6 @@ z      }
 	    hInfo.z += t;
 	    hInfo.renderIsoSurface = true;
 	    hInfo.volume = false;
-
-	    //return shade;
 	    break;
 	  }
 	}//iso surface rendering
@@ -350,10 +240,6 @@ z      }
       t += dt;
     }//while loop
     
-
-    /*  x_bnd_vec.clear();
-    y_bnd_vec.clear();
-    z_bnd_vec.clear();*/
     return shade;
     
   }
@@ -366,7 +252,6 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
       Increase ambient
       Fix specular
     */
-
     cyColor shade;
     float amp = 3.0;
     cyColor ambComponent = cyColor(0.2,0.2,0.2);
@@ -378,16 +263,16 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
     Point3 P = TransformFrom(pt);
     Point3 N = VectorTransformFrom(norm);
     N.Normalize();
-    /*    for ( unsigned int i=0; i<this->lights.size(); i++ ) {
+  
+  for ( unsigned int i=0; i<this->lights.size(); i++ ) {
       if(lights[i]->IsAmbient()){
 	cyColor intensity = this->lights[i]->Illuminate(P);
 	ambComponent += (ambInt * intensity);
-
 	continue;
       }
       else{
-    */
-	Point3 L = -light->Direction(P);
+    
+	Point3 L = -lights[i]->Direction(P);
 	L.Normalize();
             
 	Point3 V = TransformFrom(ray.p) - P;
@@ -404,14 +289,12 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
 	S = (S > 0)?S:0.0f; //max
 	S = pow( (float)S , alpha );
 
-	cyColor intensity = light->Illuminate(P);
+	cyColor intensity = lights[i]->Illuminate(P);
 	allOther += intensity *  ((costheta>0?costheta:0)  * diffuse) + (S * specular);
-	//      }
+      }
       // finally add inta*cola + intall*costheta*(cold + s* colS)
       shade = ambComponent  + allOther;
-      //      }
-
-
+    }
     return shade;
   }
   //-----------------------------------------------------------------------------------------------------
@@ -435,9 +318,9 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
     return ( z * this->data_ydim + y ) * this->data_xdim + x;
   }
   //-----------------------------------------------------------------------------------------------------
+
   float VolumeGeometry::TrilinearInterpolate(Point3 samplePt, int x, int y, int z) const
   {
-    //    cout<<"doing trilinear interpolation"<<endl;
     float data = 0;
     float xd, yd, zd;
     float c01, c23, c45, c67;
@@ -476,7 +359,7 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
   //-----------------------------------------------------------------------------------------------------
   Point3 VolumeGeometry::EstimateGradient(int x, int y, int z) const
   {
-    //    cout<<"estimating gradient "<<x<<" "<<y<<" "<<z<<endl;
+
     /* maybe i can calculate this avg while calculating gradients; maybe needto trilinear interpolate gradient
        as well */
     Point3 grad(0,0,0);
@@ -499,12 +382,10 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
     acc_g.x += temp.x;  acc_g.y += temp.y;  acc_g.z += temp.z; 
   
     grad.x = acc_g.x;    grad.y = acc_g.y;    grad.z = acc_g.z;
-  
     grad.x /= -8.0; grad.y /= -8.0; grad.z /= -8.0;
     if(grad.x != 0 && grad.y!= 0 && grad.z!=0)
       grad.Normalize();
 
-    //    cout<<"done with grad estimation"<<endl;
     return grad;
     
   }
@@ -564,6 +445,23 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
     
     return true;
   }
+//-----------------------------------------------------------------------------------------------------
+  Point3 VolumeGeometry::TransposeMult( const Matrix3 &m, const Point3 &dir ) const
+  {
+    Point3 d;
+    d.x = m.GetColumn(0) % dir;
+    d.y = m.GetColumn(1) % dir;
+    d.z = m.GetColumn(2) % dir;
+    return d;
+  }
 
+//-----------------------------------------------------------------------------------------------------
 
+// Transform from the local coordinate system
+Point3 VolumeGeometry::TransformFrom( const Point3 &p ) const { return (tm) * (p) + worldPos; }
 
+//-----------------------------------------------------------------------------------------------------
+
+Point3 VolumeGeometry::VectorTransformFrom( const Point3 &dir ) const { return TransposeMult(itm,dir); }
+
+//-----------------------------------------------------------------------------------------------------
