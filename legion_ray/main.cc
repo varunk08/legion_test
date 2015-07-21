@@ -46,7 +46,7 @@ void per_pixel_task ( const Task* task,
   //initialize node, object, transforms for each task
   Node *node = new Node;
   Sphere sphereObj;
-  VolumeGeometry vol_obj(128, 256, 256, regions, ctx, runtime); //fix later - must get dimensions from args or regions
+  VolumeGeometry vol_obj(256, 256, 256, regions, ctx, runtime); //fix later - must get dimensions from args or regions
   PointLight *light = new PointLight();
   AmbientLight *amb_light = new AmbientLight();
   LightList lightList;
@@ -67,8 +67,8 @@ void per_pixel_task ( const Task* task,
   //node->SetObject(&sphereObj);
   node->Scale(3,3,3);
   node->Rotate(Point3(0,0,1), 180);
-  node->Rotate(Point3(0,1,0), -30);
-  node->Rotate(Point3(1,0,0), -90);
+  node->Rotate(Point3(0,1,0), -20);
+  node->Rotate(Point3(1,0,0), 45);
   node->Translate (Point3(0,0,-3));
   node->SetObjTransform();
   node->SetMaterial(mtlBlinn);
@@ -91,7 +91,7 @@ void per_pixel_task ( const Task* task,
  //Writing data to logical region
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
   RGBColor col;
-  col.r = 10.0f; col.g =10.0f; col.b=10.0f;
+  col.r = 0.0f; col.g =0.0f; col.b=0.0f;
   Domain dom = runtime->get_index_space_domain(ctx, task->regions[0].region.get_index_space());
   Rect<1> rect = dom.get_rect<1>();
   int index = 0;
@@ -106,11 +106,9 @@ void per_pixel_task ( const Task* task,
       if ( TraceSingleNode ( r, hInfo, *node)){
 
 	//shade - fix magic number
-	cyColor shade = hInfo.shade;
-	float amp = 130.0f; //amp to control intensity - fix later
-	col.r = amp * shade.r;
-	col.g = amp * shade.g;
-	col.b = amp * shade.b ;
+	col.r = hInfo.shade.r;
+	col.g = hInfo.shade.g;
+	col.b = hInfo.shade.b ;
 
       }
 
@@ -163,11 +161,11 @@ void top_level_task( const Task* task,
 
     //const char* data_file = "foot_8bit_256x256x256.raw";
     //const char* tf_file = "foot_2.1dt";
-    //const char* data_file = "Engine_256x256x256.raw";
-    //    const char* tf_file = "Engine_256x256x256.1dt";//
-const char* data_file = "VisMale_128x256x256.raw";
-const char* tf_file = "VisMale_128x256x256.1dt";
-  int data_xdim = 128; int data_ydim = 256; int data_zdim = 256;
+    const char* data_file = "Engine_256x256x256.raw";
+    const char* tf_file = "Engine_256x256x256.1dt";//
+    //const char* data_file = "VisMale_128x256x256.raw";
+    //const char* tf_file = "VisMale_128x256x256.1dt";
+  int data_xdim = 256; int data_ydim = 256; int data_zdim = 256;
 
   //Have to deallocate uc_vol_data, color_tf, alpha_tf later
   //  int size = data_xdim * data_ydim * data_zdim;
@@ -292,7 +290,7 @@ const char* tf_file = "VisMale_128x256x256.1dt";
   //read from logical region and write to buffer renderimage
   for (GenericPointInRectIterator<1> pir (elem_rect); pir; pir++) {
     RGBColor val = (RGBColor)acc.read(DomainPoint::from_point<1>(pir.p));
-    Color24 col;
+    cyColor col;
     col.r  = val.r;
     col.g  = val.g;
     col. b = val.b;

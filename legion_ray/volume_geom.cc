@@ -47,7 +47,7 @@ void VolumeGeometry::set_lights(LightList &lList)
   AmbientLight *amb_light = new AmbientLight();
  
  
- amb_light->SetIntensity(cyColor(0.2,0.2,0.2));
+  amb_light->SetIntensity(cyColor(0.2,0.2,0.2));
   light->SetIntensity(cyColor(0.7,0.7,0.7));
   light->SetPosition(Point3(0,10,0));
   this->lights.push_back(amb_light);
@@ -135,7 +135,7 @@ void VolumeGeometry::set_lights(LightList &lList)
   cyColor VolumeGeometry::RayMarch(const Ray& ray, HitInfo &hInfo, HitInfo& start, HitInfo& end, bool &noData) const
   {
 
-    cyColor shade = cyColor(125,0,0); 
+    cyColor shade = cyColor(0,0,0); 
     float length = (float)end.z - start.z;
     float dist = sqrt(std::pow((float)end.p.x - start.p.x, 2.0f) + pow((float)end.p.y - start.p.y, 2.0f) + pow((float)end.p.z - start.p.z,  2.0f));
 
@@ -253,11 +253,11 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
       Fix specular
     */
     cyColor shade;
-    float amp = 3.0;
-    cyColor ambComponent = cyColor(0.2,0.2,0.2);
-    cyColor diffuse = amp *  preCol;
-    cyColor specular = cyColor(0.7f,0.7f,0.7f);
+    float amp = 3.0f;
+    cyColor diffuse =  amp * preCol;
     cyColor ambInt =  amp * preCol;
+    cyColor ambComponent = cyColor(0,0,0);
+    cyColor specular = cyColor(0.7f,0.7f,0.7f);
     cyColor allOther = cyColor(0,0,0);
     float glossiness = 20.0f;    
     Point3 P = TransformFrom(pt);
