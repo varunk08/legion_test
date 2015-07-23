@@ -152,6 +152,25 @@ void VolumeGeometry::set_lights(LightList &lList)
     int num_iter = 0;
     noData = true;
 
+    //caching attempt for better performance
+    std::vector<Point3f> x_bnd;
+    std::vector<Point3f> y_bnd;
+    std::vector<Point3f> z_bnd;
+    {
+      for(int x=0; x<data_xdim; x++){
+	x_bnd.push_back(  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))))  );
+      }
+
+      for(int y=0; y<data_ydim; y++){
+	y_bnd.push_back(  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))))  );
+      }
+
+      for(int z=0; z<data_zdim; z++){
+	z_bnd.push_back(  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))))  );
+      }
+
+    }
+   
     while ( t < dist ) {
       sample = start.p + t * r.dir;
       int cx=-1,cy=-1,cz=-1;
@@ -162,9 +181,10 @@ void VolumeGeometry::set_lights(LightList &lList)
 
       for(int x=0; x < data_xdim -1; x++){
 
-	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))));
-	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,0,0))));
-
+	//low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))));
+	//up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,0,0))));
+	low_bnd = x_bnd.at(x);
+	up_bnd = x_bnd.at(x+1);
 	if((float)low_bnd.x < sample.x && (float)up_bnd.x >= sample.x){
 	  cx = x;
 	  break;
@@ -175,8 +195,10 @@ void VolumeGeometry::set_lights(LightList &lList)
       for(int y=0; y < data_ydim-1; y++){
 
 
-	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))));
-	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y+1,0))));
+	//low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))));
+	//up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y+1,0))));
+	low_bnd = y_bnd.at(y);
+	up_bnd = y_bnd.at(y+1);
 
 	if(low_bnd.y < sample.y && up_bnd.y >= sample.y){
 	  cy = y;
@@ -186,8 +208,10 @@ void VolumeGeometry::set_lights(LightList &lList)
      
       for(int z=0; z < data_zdim-1; z++){
 
-	low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))));
-	up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z+1))));
+	//low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))));
+	//up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z+1))));
+	low_bnd = z_bnd.at(z);
+	up_bnd = z_bnd.at(z+1);
 
 	if(low_bnd.z < sample.z && up_bnd.z >= sample.z){
 	  cz = z;	  

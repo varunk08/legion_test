@@ -46,7 +46,7 @@ void per_pixel_task ( const Task* task,
   //initialize node, object, transforms for each task
   Node *node = new Node;
   Sphere sphereObj;
-  VolumeGeometry vol_obj(256, 256, 256, regions, ctx, runtime); //fix later - must get dimensions from args or regions
+  VolumeGeometry vol_obj(256, 256, 178, regions, ctx, runtime); //fix later - must get dimensions from args or regions
   PointLight *light = new PointLight();
   AmbientLight *amb_light = new AmbientLight();
   LightList lightList;
@@ -67,8 +67,8 @@ void per_pixel_task ( const Task* task,
   //node->SetObject(&sphereObj);
   node->Scale(3,3,3);
   node->Rotate(Point3(0,0,1), 180);
-  node->Rotate(Point3(0,1,0), -20);
-  node->Rotate(Point3(1,0,0), 45);
+  node->Rotate(Point3(0,1,0), -45);
+  node->Rotate(Point3(1,0,0), 30);
   node->Translate (Point3(0,0,-3));
   node->SetObjTransform();
   node->SetMaterial(mtlBlinn);
@@ -86,7 +86,7 @@ void per_pixel_task ( const Task* task,
   vol_obj.set_lights(lightList);
   const int point = task->index_point.point_data[0];
 
-  cout<<"Starting Rendering block: "<<point<<endl;
+  cout<<"Begin Rendering block: "<<point<<endl;
  
  //Writing data to logical region
   RegionAccessor<AccessorType::Generic, RGBColor> acc = regions[0].get_field_accessor(FID_OUT).typeify<RGBColor>();
@@ -104,12 +104,9 @@ void per_pixel_task ( const Task* task,
 
       //test for intersections
       if ( TraceSingleNode ( r, hInfo, *node)){
-
-	//shade - fix magic number
 	col.r = hInfo.shade.r;
 	col.g = hInfo.shade.g;
-	col.b = hInfo.shade.b ;
-
+	col.b = hInfo.shade.b;
       }
 
       //write data to logical region
@@ -161,14 +158,17 @@ void top_level_task( const Task* task,
 
     //const char* data_file = "foot_8bit_256x256x256.raw";
     //const char* tf_file = "foot_2.1dt";
-    const char* data_file = "Engine_256x256x256.raw";
-    const char* tf_file = "Engine_256x256x256.1dt";//
+    //const char* data_file = "engine_256x256x128.raw";
+    //const char* tf_file = "engine_256x256x128.1dt";//
     //const char* data_file = "VisMale_128x256x256.raw";
     //const char* tf_file = "VisMale_128x256x256.1dt";
-  int data_xdim = 256; int data_ydim = 256; int data_zdim = 256;
+    const char* data_file = "BostonTeapot_256x256x178.raw";
+    const char* tf_file = "BostonTeapot_256x256x178.1dt";
+  
+int data_xdim = 256; int data_ydim = 256; int data_zdim = 178;
 
   //Have to deallocate uc_vol_data, color_tf, alpha_tf later
-  //  int size = data_xdim * data_ydim * data_zdim;
+
   unsigned char* uc_vol_data = NULL;
   cyColor* color_tf = NULL;
   float* alpha_tf = NULL;
@@ -192,9 +192,9 @@ void top_level_task( const Task* task,
   delete [] alpha_tf;
 
   //create rect of screen dimensions
-  int xdim = 800;
-  int ydim = 600;
-  int size = xdim * ydim;
+  int xdim = camera.imgWidth;
+  int ydim = camera.imgHeight;
+  int size = xdim * ydim; //for launching tasks
   Rect<1> elem_rect(Point<1>(0), Point<1>(size -1));
 
   //create index space
@@ -246,7 +246,7 @@ void top_level_task( const Task* task,
   }
 
   cout<<"Launching tasks"<<endl;
-
+  double start_time = LegionRuntime::TimeStamp::get_current_time_in_micros();
   //Index launcher - for init values into logical region
   launch_domain = color_domain;
   IndexLauncher index_launcher ( PER_PIXEL_TASK_ID, 
@@ -303,6 +303,9 @@ void top_level_task( const Task* task,
   runtime->destroy_logical_region( ctx, output_lr);
   runtime->destroy_field_space( ctx, output_fs);
   runtime->destroy_index_space( ctx, is);
+  double stop_time = LegionRuntime::TimeStamp::get_current_time_in_micros();
+  cout<<"Done in "<<(stop_time - start_time) * 1e-6<<" seconds"<<endl;
+
 }
 //-----------------------------------------------------------------------------------------------------
 int main(int argc, char **argv)
