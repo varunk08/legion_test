@@ -20,10 +20,10 @@
   }
 //-----------------------------------------------------------------------------------------------------
 void VolumeGeometry::init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr,
-					  GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads,
+					  GucharRA &vol_acc, GPoint3fRA &acc_grads,
 					  GRGBColorRA &acc_col, GfloatRA &acc_alpha)
   {
-    this->acc_corner_pos = acc;
+
     this->acc_vol_data = vol_acc;
     this->acc_gradients = acc_grads;
     this->acc_color_tf = acc_col;
@@ -152,68 +152,47 @@ void VolumeGeometry::set_lights(LightList &lList)
     int num_iter = 0;
     noData = true;
 
-    //caching attempt for better performance
-    std::vector<Point3f> x_bnd;
-    std::vector<Point3f> y_bnd;
-    std::vector<Point3f> z_bnd;
-    {
-      for(int x=0; x<data_xdim; x++){
-	x_bnd.push_back(  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))))  );
-      }
+    //on the fly calculation of corner positions
+    float startX = -1.0f;
+    float startY = -1.0f;
+    float startZ = -1.0f;
 
-      for(int y=0; y<data_ydim; y++){
-	y_bnd.push_back(  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))))  );
-      }
+    float dx = (2.0f / (data_xdim - 1));
+    float dy = (2.0f / (data_ydim - 1));
+    float dz = (2.0f / (data_zdim - 1));
 
-      for(int z=0; z<data_zdim; z++){
-	z_bnd.push_back(  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))))  );
-      }
-
-    }
-   
     while ( t < dist ) {
       sample = start.p + t * r.dir;
       int cx=-1,cy=-1,cz=-1;
-      int low_ind;
-      int up_ind;
-      Point3f low_bnd;
-      Point3f up_bnd;
+
+      float low_bnd;
+      float up_bnd;
 
       for(int x=0; x < data_xdim -1; x++){
+	low_bnd = startX + x * dx;
+	up_bnd = startX + (x+1) * dx;
 
-	//low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,0,0))));
-	//up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,0,0))));
-	low_bnd = x_bnd.at(x);
-	up_bnd = x_bnd.at(x+1);
-	if((float)low_bnd.x < sample.x && (float)up_bnd.x >= sample.x){
+	if((float)low_bnd < sample.x && (float)up_bnd >= sample.x){
 	  cx = x;
 	  break;
 	}
+
       }
 
-
       for(int y=0; y < data_ydim-1; y++){
-
-
-	//low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y,0))));
-	//up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,y+1,0))));
-	low_bnd = y_bnd.at(y);
-	up_bnd = y_bnd.at(y+1);
-
-	if(low_bnd.y < sample.y && up_bnd.y >= sample.y){
+	low_bnd = startY + y * dy;
+	up_bnd = startY + (y+1) * dy;
+	if(low_bnd < sample.y && up_bnd >= sample.y){
 	  cy = y;
 	  break;
 	}
       }
      
       for(int z=0; z < data_zdim-1; z++){
+	low_bnd = startZ + z * dz;
+	up_bnd = startZ + (z+1) * dz;
 
-	//low_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z))));
-	//up_bnd = acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(0,0,z+1))));
-	low_bnd = z_bnd.at(z);
-	up_bnd = z_bnd.at(z+1);
-
-	if(low_bnd.z < sample.z && up_bnd.z >= sample.z){
+	if(low_bnd < sample.z && up_bnd >= sample.z){
 	  cz = z;	  
 	  break;
 	}
@@ -350,8 +329,24 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
     float c01, c23, c45, c67;
     float c0,c1;
     float val;
-    Point3f t_p1 =  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));
-    Point3f t_p2 =  acc_corner_pos.read(DomainPoint::from_point<1>(Point<1>(getIndex(x+1,y+1,z+1))));
+
+    float startX = -1.0f;
+    float startY = -1.0f;
+    float startZ = -1.0f;
+
+    float dx = (2.0f / (data_xdim - 1));
+    float dy = (2.0f / (data_ydim - 1));
+    float dz = (2.0f / (data_zdim - 1));
+
+
+    Point3f t_p1;
+    t_p1.x = startX + x * dx;
+    t_p1.y = startY + y * dy;
+    t_p1.z = startZ + z * dz; 
+    Point3f t_p2;
+    t_p2.x = startX + (x+1) * dx;
+    t_p2.y = startY + (y+1) * dy;
+    t_p2.z = startZ + (z+1) * dz;
     float* v = new float[8];
 
     v[0] = (unsigned int)acc_vol_data.read(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z))));

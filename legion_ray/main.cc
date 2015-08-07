@@ -41,7 +41,6 @@ void per_pixel_task ( const Task* task,
 		     Context ctx, HighLevelRuntime *runtime)
 {
 
-
   Ray* rays = (Ray*)task->local_args;
   //initialize node, object, transforms for each task
   Node *node = new Node;
@@ -65,6 +64,8 @@ void per_pixel_task ( const Task* task,
   node->SetName("only_node");
   node->SetObject(&vol_obj);
   //node->SetObject(&sphereObj);
+
+  //object transformations
   node->Scale(3,3,3);
   node->Rotate(Point3(0,0,1), 180);
   node->Rotate(Point3(0,1,0), -45);
@@ -74,14 +75,14 @@ void per_pixel_task ( const Task* task,
   node->SetMaterial(mtlBlinn);
 
   //init volume obj accessors
-  GPoint3fRA acc_corner_pos = regions[1].get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
+  //GPoint3fRA acc_corner_pos = regions[1].get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
   GucharRA acc_vol_data = regions[1].get_field_accessor(FID_VOL_DATA).typeify<unsigned char>();
   GPoint3fRA acc_gradients = regions[1].get_field_accessor(FID_GRADIENTS).typeify<Point3f>();
   GRGBColorRA acc_color_tf = regions[2].get_field_accessor(FID_COLOR_TF).typeify<RGBColor>();
   GfloatRA acc_alpha_tf = regions[2].get_field_accessor(FID_ALPHA_TF).typeify<float>();
   //1 - volume data; 2 - tf data
   vol_obj.init_logical_regions(task->regions[1].region, task->regions[2].region,
-				acc_vol_data, acc_corner_pos, acc_gradients, acc_color_tf, acc_alpha_tf);
+				acc_vol_data, acc_gradients, acc_color_tf, acc_alpha_tf);
   vol_obj.init_tf_bounds(0, 255); //fix later - magic number
   vol_obj.set_lights(lightList);
   const int point = task->index_point.point_data[0];
@@ -158,14 +159,16 @@ void top_level_task( const Task* task,
 
     //const char* data_file = "foot_8bit_256x256x256.raw";
     //const char* tf_file = "foot_2.1dt";
-    //const char* data_file = "engine_256x256x128.raw";
-    //const char* tf_file = "engine_256x256x128.1dt";//
+    //const char* data_file = "engine_256x256x256.raw";
+    //const char* tf_file = "engine_256x256x128.1dt";
     //const char* data_file = "VisMale_128x256x256.raw";
     //const char* tf_file = "VisMale_128x256x256.1dt";
     const char* data_file = "BostonTeapot_256x256x178.raw";
     const char* tf_file = "BostonTeapot_256x256x178.1dt";
+    //const char* data_file = "bonsai_256x256x256.raw";
+    //const char* tf_file = "bonsai_256x256x256.1dt";
   
-int data_xdim = 256; int data_ydim = 256; int data_zdim = 178;
+    int data_xdim = 256; int data_ydim = 256; int data_zdim = 178;
 
   //Have to deallocate uc_vol_data, color_tf, alpha_tf later
 
@@ -266,7 +269,7 @@ int data_xdim = 256; int data_ydim = 256; int data_zdim = 178;
 
   //volume data
   index_launcher.region_requirements[1].add_field(FID_VOL_DATA);
-  index_launcher.region_requirements[1].add_field(FID_CORNER_POS);
+  //index_launcher.region_requirements[1].add_field(FID_CORNER_POS);
   index_launcher.region_requirements[1].add_field(FID_GRADIENTS);
 
   //transfer function data
@@ -412,7 +415,6 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 
   FieldAllocator falloc = runtime->create_field_allocator(ctx, volume_data_fs);
   falloc.allocate_field(sizeof(unsigned char), FID_VOL_DATA);
-  falloc.allocate_field(sizeof(Point3f), FID_CORNER_POS);
   falloc.allocate_field(sizeof(Point3f), FID_GRADIENTS);
 
   //Make logical region
@@ -422,7 +424,6 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
   //Create Region requirement
   RegionRequirement vol_req (volume_data_lr, READ_ONLY,RELAXED , volume_data_lr);
   vol_req.add_field(FID_VOL_DATA);
-  vol_req.add_field(FID_CORNER_POS);
   vol_req.add_field(FID_GRADIENTS);
 
   //Create Physical regions
@@ -431,40 +432,27 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
   //Create Region accessors
   vol_data_pr.wait_until_valid();
   RegionAccessor <AccessorType::Generic, unsigned char> fa_vol_data = vol_data_pr.get_field_accessor(FID_VOL_DATA).typeify<unsigned char>();
-  RegionAccessor<AccessorType::Generic, Point3f> fa_corner_pos = vol_data_pr.get_field_accessor(FID_CORNER_POS).typeify<Point3f>();
   RegionAccessor<AccessorType::Generic, Point3f> fa_gradients = vol_data_pr.get_field_accessor(FID_GRADIENTS).typeify<Point3f>();
 
   //Init logical region with data from VolumeData to (1) FID_VOL_DATA (2) FID_CORNER_POS (3) FID_GRADIENTS
   //write volume data to logical region
+  cout<<"Writing volume data to logical region"<<endl;
    GenericPointInRectIterator<1> itr(vol_points_rect);
   for(int i=0; i<num_points; ++i, itr++){
     fa_vol_data.write(DomainPoint::from_point<1>(itr.p), volumeData[i]);
   }
 
-  //Calculate corner positions
-  cout<<"Writing volume data to logical region"<<endl;
-  float startX = -1.0f;  float startY = -1.0f;  float startZ = -1.0f;
-  float newX = 0.0f, newY = 0.0f, newZ = 0.0f;
-  Point3f c_pos;
-  GenericPointInRectIterator<1> cpos_itr(vol_points_rect);
+  //calculate gradients for each point
+  cout<<"Writing gradient data to logical region"<<endl;
   for(int z = 0; z < data_zdim; z++)
     {
-      newZ = startZ + z * (2.0 / (data_zdim - 1));
+
       for(int y = 0; y < data_ydim; y++)
 	{
-	  newY = startY + y * (2.0 / (data_ydim - 1));
+
 	  for(int x = 0; x < data_xdim; x++)
 	    {
-	      newX = startX + x * (2.0 / (data_xdim - 1));
-	      //Write corner position info to region
 
-	      c_pos.x = newX; c_pos.y = newY; c_pos.z = newZ;
-
-	      //write corner position info to logical region
-	      fa_corner_pos.write(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z,data_xdim,data_ydim))),
-				  (Point3f) c_pos);
-	      
-	      //calculate gradients for each point
 	      float xn, xp, yn, yp, zn, zp;
 	      if(x > 0) xp = (uint)volumeData[getIndex(x-1,y,z,data_xdim, data_ydim)];
 	      else xp=0;
@@ -485,7 +473,7 @@ LogicalRegion load_volume_data(int data_xdim, int data_ydim, int data_zdim,
 
 	      //write gradients to logical region
 	      fa_gradients.write(DomainPoint::from_point<1>(Point<1>(getIndex(x,y,z,data_xdim,data_ydim))), N);
-	      cpos_itr++;
+
 
 	    }
 	}
@@ -506,7 +494,6 @@ void GenerateRay(int x, int y, const Camera &camera, Ray &r, int xdim, int ydim)
   float dy = -(2 * abs(h)) / ydim;
   float dxx = dx/2, dyy = dy/2;
   Point3 K(-w, h, -l);
-
 
   K.x += x * dx;
   K.y += y * dy;

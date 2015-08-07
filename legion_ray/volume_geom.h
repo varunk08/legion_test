@@ -60,7 +60,7 @@ class VolumeGeometry : public Object
   bool IntersectRay(const Ray &ray, HitInfo &hInfo, int hitSide=HIT_FRONT ) const;
   Box GetBoundBox() const;
   void init_logical_regions(LogicalRegion vol_data_lr, LogicalRegion tf_lr,
-			    GucharRA &vol_acc, GPoint3fRA &acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col,
+			    GucharRA &vol_acc, GPoint3fRA &acc_grads, GRGBColorRA &acc_col,
 			    GfloatRA &acc_alpha);
   void init_tf_bounds(int min, int max);
   void set_lights(LightList &lList);
