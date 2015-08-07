@@ -45,7 +45,7 @@ void per_pixel_task ( const Task* task,
   //initialize node, object, transforms for each task
   Node *node = new Node;
   Sphere sphereObj;
-  VolumeGeometry vol_obj(256, 256, 178, regions, ctx, runtime); //fix later - must get dimensions from args or regions
+  VolumeGeometry vol_obj(128, 256, 256, regions, ctx, runtime); //fix later - must get dimensions from args or regions. lazy now.
   PointLight *light = new PointLight();
   AmbientLight *amb_light = new AmbientLight();
   LightList lightList;
@@ -67,9 +67,11 @@ void per_pixel_task ( const Task* task,
 
   //object transformations
   node->Scale(3,3,3);
+
   node->Rotate(Point3(0,0,1), 180);
-  node->Rotate(Point3(0,1,0), -45);
-  node->Rotate(Point3(1,0,0), 30);
+  node->Rotate(Point3(0,1,0), 45);
+  node->Rotate(Point3(1,0,0), -90);
+
   node->Translate (Point3(0,0,-3));
   node->SetObjTransform();
   node->SetMaterial(mtlBlinn);
@@ -161,14 +163,14 @@ void top_level_task( const Task* task,
     //const char* tf_file = "foot_2.1dt";
     //const char* data_file = "engine_256x256x256.raw";
     //const char* tf_file = "engine_256x256x128.1dt";
-    //const char* data_file = "VisMale_128x256x256.raw";
-    //const char* tf_file = "VisMale_128x256x256.1dt";
-    const char* data_file = "BostonTeapot_256x256x178.raw";
-    const char* tf_file = "BostonTeapot_256x256x178.1dt";
+    const char* data_file = "VisMale_128x256x256.raw";
+    const char* tf_file = "VisMale_128x256x256.1dt";
+    //const char* data_file = "BostonTeapot_256x256x178.raw";
+    //const char* tf_file = "BostonTeapot_256x256x178.1dt";
     //const char* data_file = "bonsai_256x256x256.raw";
     //const char* tf_file = "bonsai_256x256x256.1dt";
   
-    int data_xdim = 256; int data_ydim = 256; int data_zdim = 178;
+    int data_xdim = 128; int data_ydim = 256; int data_zdim = 256;
 
   //Have to deallocate uc_vol_data, color_tf, alpha_tf later
 

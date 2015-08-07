@@ -303,17 +303,52 @@ cyColor VolumeGeometry::DoPhongShading(const Ray &ray,const Point3 &pt, const Po
   //-----------------------------------------------------------------------------------------------------
   cyColor VolumeGeometry::GetColor(float density) const
   {
-    unsigned int index = (density - (unsigned int)minData)/((unsigned int)maxData-(unsigned int)minData) * 255;
-    RGBColor col = acc_color_tf.read(DomainPoint::from_point<1>(Point<1>(index)));
+    RGBColor col;
+    float f_index = (density - (unsigned int)minData)/((unsigned int)maxData-(unsigned int)minData) * 255;
+    if(f_index < 255){
+      int first_ind = (int) f_index;
+      int next_ind = (int) 1 + first_ind;
+      float alpha = f_index - first_ind;
+
+    RGBColor v0 = acc_color_tf.read(DomainPoint::from_point<1>(Point<1>(first_ind)));
+    RGBColor v1 = acc_color_tf.read(DomainPoint::from_point<1>(Point<1>(next_ind)));
+
+    col.r = (1 - alpha) * v0.r + alpha * v1.r;
+    col.g = (1 - alpha) * v0.g + alpha * v1.g;
+    col.b = (1 - alpha) * v0.b + alpha * v1.b;
+
+    }
+    else{
+      col = acc_color_tf.read(DomainPoint::from_point<1>(Point<1>( (int) f_index) ));
+    }
+
    
     return cyColor(col.r, col.g, col.b);
   }
   //-----------------------------------------------------------------------------------------------------
   float VolumeGeometry::GetAlpha(float density) const
   {
-    int index = (density - (unsigned int)minData)/((unsigned int)maxData-(unsigned int)minData) * 255;
-    float alpha = acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>(index)));
-    return alpha;
+    int index;
+    float lerp_alpha;
+    float f_index = (density - (unsigned int)minData)/((unsigned int)maxData-(unsigned int)minData) * 255;
+
+    if(f_index < 255){
+      int first_ind = (int) f_index;
+      int next_ind = (int) 1 + first_ind;
+      float alpha = f_index - first_ind;
+
+    float v0 = acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>(first_ind)));
+    float v1 = acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>(next_ind)));
+
+    lerp_alpha = (1 - alpha) * v0 + alpha * v1;
+
+
+    }
+    else{
+      lerp_alpha = acc_alpha_tf.read(DomainPoint::from_point<1>(Point<1>( (int) f_index) ));
+    }
+
+    return lerp_alpha;
   }
   //-----------------------------------------------------------------------------------------------------
   inline int VolumeGeometry::getIndex(int x, int y, int z) const
